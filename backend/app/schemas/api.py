@@ -1,0 +1,179 @@
+from __future__ import annotations
+
+from datetime import datetime
+from typing import Any, Optional
+
+from pydantic import BaseModel, Field
+
+
+# ---------------------------------------------------------------------------
+# Evolutions
+# ---------------------------------------------------------------------------
+
+
+class ProposeEvolutionRequest(BaseModel):
+    artifact_id: str
+    parent_skill_id: Optional[str] = None  # null for brand new skills
+    origin: str  # fixed | derived | captured
+    change_summary: str = ""
+    content_diff: Optional[str] = None
+    tags: list[str] = []
+
+
+class EvaluationResult(BaseModel):
+    passed: bool
+    quality_score: float        # 0.0 – 1.0
+    notes: str                  # human/agent-readable feedback
+    checks: dict[str, bool]     # individual check results
+
+
+class EvolutionResponse(BaseModel):
+    evolution_id: str
+    status: str                 # pending | evaluating | accepted | rejected
+    proposed_name: str
+    proposed_desc: str
+    parent_skill_id: Optional[str]
+    origin: str
+    proposed_by: str
+    proposed_at: datetime
+    evaluated_at: Optional[datetime]
+    evaluation: Optional[EvaluationResult]
+    result_record_id: Optional[str]  # set when accepted
+    change_summary: str
+    tags: list[str]
+    auto_accepted: bool
+
+
+# ---------------------------------------------------------------------------
+# Artifacts
+# ---------------------------------------------------------------------------
+
+
+class ArtifactStats(BaseModel):
+    file_count: int
+    total_size: int
+
+
+class StageArtifactResponse(BaseModel):
+    artifact_id: str
+    stats: ArtifactStats
+
+
+# ---------------------------------------------------------------------------
+# Records — request
+# ---------------------------------------------------------------------------
+
+
+class CreateRecordRequest(BaseModel):
+    record_id: str = Field(..., description="Unique identifier for this skill record")
+    artifact_id: str = Field(..., description="UUID of the previously staged artifact")
+    origin: str = Field(..., description="imported | captured | derived | fixed")
+    visibility: str = Field("public", description="public | group_only")
+    parent_skill_ids: list[str] = Field(
+        default_factory=list,
+        description="IDs of parent skill records (lineage)",
+    )
+    tags: list[str] = Field(default_factory=list)
+    level: str = Field("tool_guide", description="workflow | tool_guide | reference")
+    created_by: Optional[str] = Field(None)
+    change_summary: Optional[str] = Field(None)
+    content_diff: Optional[str] = Field(None)
+
+
+# ---------------------------------------------------------------------------
+# Records — response
+# ---------------------------------------------------------------------------
+
+
+class RecordResponse(BaseModel):
+    record_id: str
+    artifact_id: str
+    name: str
+    description: str
+    origin: str
+    visibility: str
+    level: str
+    tags: list[str]
+    created_by: str
+    change_summary: str
+    content_diff: Optional[str]
+    content_fingerprint: str
+    parent_skill_ids: list[str]
+    created_at: datetime
+    embedding: Optional[list[float]] = None
+
+    model_config = {"from_attributes": True}
+
+
+class RecordMetadataItem(BaseModel):
+    record_id: str
+    artifact_id: str
+    name: str
+    description: str
+    origin: str
+    visibility: str
+    level: str
+    tags: list[str]
+    created_by: str
+    change_summary: str
+    content_fingerprint: str
+    parent_skill_ids: list[str]
+    created_at: datetime
+    embedding: Optional[list[float]] = None
+
+    model_config = {"from_attributes": True}
+
+
+class RecordMetadataResponse(BaseModel):
+    items: list[RecordMetadataItem]
+    has_more: bool
+    next_cursor: Optional[str]
+    total: int
+
+
+# ---------------------------------------------------------------------------
+# Search
+# ---------------------------------------------------------------------------
+
+
+class SearchResult(BaseModel):
+    record_id: str
+    name: str
+    description: str
+    origin: str
+    visibility: str
+    level: str
+    tags: list[str]
+    created_by: str
+    created_at: datetime
+    score: float
+
+
+class SearchResponse(BaseModel):
+    query: str
+    results: list[SearchResult]
+    count: int
+    search_type: str  # "hybrid" | "fulltext"
+
+
+# ---------------------------------------------------------------------------
+# Errors
+# ---------------------------------------------------------------------------
+
+
+class ErrorResponse(BaseModel):
+    error: str
+    detail: Optional[str] = None
+    existing_record_id: Optional[str] = None
+    fingerprint: Optional[str] = None
+
+
+# ---------------------------------------------------------------------------
+# Health
+# ---------------------------------------------------------------------------
+
+
+class HealthResponse(BaseModel):
+    status: str
+    version: str = "0.1.0"
+    database: str = "unknown"
