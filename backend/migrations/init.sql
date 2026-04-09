@@ -55,7 +55,11 @@ CREATE TABLE IF NOT EXISTS skill_records (
     content_diff         TEXT,
     content_fingerprint  CHAR(64)     NOT NULL,
     embedding            vector(1536),
-    created_at           TIMESTAMPTZ  NOT NULL DEFAULT NOW()
+    created_at           TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+    total_selections     INTEGER      NOT NULL DEFAULT 0,
+    total_applied        INTEGER      NOT NULL DEFAULT 0,
+    total_completions    INTEGER      NOT NULL DEFAULT 0,
+    total_fallbacks      INTEGER      NOT NULL DEFAULT 0
 );
 
 CREATE INDEX IF NOT EXISTS idx_skill_records_name        ON skill_records (name);
