@@ -177,7 +177,7 @@ class SearchResponse(BaseModel):
 class OpenSpaceSkillJudgment(BaseModel):
     skill_id: str
     skill_applied: bool
-    note: str = ""
+    note: str = Field("", max_length=500)  # capped to limit prompt injection surface
 
 
 class OpenSpaceEvolutionSuggestion(BaseModel):
@@ -185,7 +185,7 @@ class OpenSpaceEvolutionSuggestion(BaseModel):
     target_skills: list[str] = []     # preferred multi-parent field
     target_skill: str = ""            # legacy single-skill field (fallback)
     category: Optional[str] = None
-    direction: str = ""               # free-text evolution intent from LLM
+    direction: str = Field("", max_length=1000)
 
     def resolved_targets(self) -> list[str]:
         return self.target_skills or ([self.target_skill] if self.target_skill else [])
@@ -193,14 +193,14 @@ class OpenSpaceEvolutionSuggestion(BaseModel):
 
 class OpenSpaceIngestionRequest(BaseModel):
     task_id: str
-    timestamp: str
+    timestamp: datetime
     task_completed: bool
-    execution_note: str = ""
+    execution_note: str = Field("", max_length=500)  # capped to limit prompt injection surface
     tool_issues: list[str] = []
     skill_judgments: list[OpenSpaceSkillJudgment] = []
     evolution_suggestions: list[OpenSpaceEvolutionSuggestion] = []
     analyzed_by: str = ""
-    analyzed_at: str
+    analyzed_at: datetime
 
 
 class IngestionResult(BaseModel):

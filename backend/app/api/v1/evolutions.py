@@ -113,6 +113,16 @@ async def _create_skill_record_from_evolution(
     # Use candidate_skill_id if provided, otherwise fall back to evo:<uuid>
     record_id = evo.candidate_skill_id or f"evo:{evo.id}"
 
+    # Guard: must not overwrite an existing SkillRecord
+    collision = await db.execute(
+        select(SkillRecord).where(SkillRecord.id == record_id)
+    )
+    if collision.scalar_one_or_none() is not None:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=f"candidate_skill_id {record_id!r} already exists as a skill record.",
+        )
+
     record = SkillRecord(
         id=record_id,
         artifact_id=evo.artifact_id,

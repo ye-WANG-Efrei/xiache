@@ -27,8 +27,14 @@ _DANGEROUS_PATTERNS: list[str] = [
     "eval(",
     "exec(",
     "__import__",
-    "DROP TABLE",
-    "DELETE FROM",
+    "drop table",
+    "delete from",
+    "child_process",
+    "base64 -d",
+    "curl | sh",
+    "curl|sh",
+    "wget | sh",
+    "wget|sh",
 ]
 
 
@@ -167,9 +173,10 @@ def evaluate_evolution(
         )
 
     # ------------------------------------------------------------------
-    # 11. no_dangerous_patterns — block destructive code
+    # 11. no_dangerous_patterns — block destructive code (case-insensitive)
     # ------------------------------------------------------------------
-    dangerous_found = [p for p in _DANGEROUS_PATTERNS if p in skill_body]
+    skill_body_lower = skill_body.lower()
+    dangerous_found = [p for p in _DANGEROUS_PATTERNS if p in skill_body_lower]
     safe_ok = len(dangerous_found) == 0
     checks["no_dangerous_patterns"] = safe_ok
     if not safe_ok:

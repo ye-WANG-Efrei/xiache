@@ -32,27 +32,37 @@ logger = logging.getLogger(__name__)
 _IMPROVE_PROMPT = """\
 You are a skill-improvement assistant for an AI agent skill registry.
 
-## Current SKILL.md
+<current_skill_md>
 {skill_md}
+</current_skill_md>
 
-## Recent execution failures (from agent runs)
+<execution_failure_notes>
 {failure_notes}
+</execution_failure_notes>
 
-## Task
-Rewrite the SKILL.md to fix the issues described above.
+Task: Rewrite the SKILL.md to fix the issues described in the failure notes above.
 - Keep the YAML frontmatter (name, description, version, tags, input_schema, output_schema).
 - Bump the patch version (e.g. 1.0.0 → 1.0.1).
 - Improve the body so agents can follow it without falling back.
-- Output ONLY the new SKILL.md text, no commentary.
+- Output ONLY the new SKILL.md text, no commentary, no markdown fences.
 """
+
+_MAX_NOTE_LEN = 500  # characters per note — guards against prompt injection
+
+
+def _sanitize_notes(notes: list[str]) -> list[str]:
+    return [n[:_MAX_NOTE_LEN].replace("</", "<\\/") for n in notes]
 
 
 def _bump_patch(version: str) -> str:
-    """Increment patch number: 1.2.3 → 1.2.4. Falls back to appending .1."""
+    """Increment patch number: 1.2.3 → 1.2.4, handles pre-release like 1.0.3-beta.1."""
     parts = version.split(".")
-    if len(parts) == 3 and parts[2].isdigit():
-        parts[2] = str(int(parts[2]) + 1)
-        return ".".join(parts)
+    if len(parts) >= 3:
+        # Strip pre-release suffix before checking digits
+        patch_numeric = parts[2].split("-")[0]
+        if patch_numeric.isdigit():
+            parts[2] = str(int(patch_numeric) + 1)
+            return ".".join(parts[:3])  # drop pre-release suffix in bumped version
     return version + ".1"
 
 
@@ -115,8 +125,22 @@ async def maybe_evolve(
         logger.warning("auto_evolver: no SKILL.md in artifact for %s", skill.id)
         return None
 
-    # Build prompt and call LLM
-    notes_text = "\n".join(f"- {n}" for n in failure_notes) if failure_notes else "(no notes)"
+    # Guard: skip if there is already a pending/evaluating evolution for this skill
+    pending_check = await db.execute(
+        select(SkillEvolution).where(
+            SkillEvolution.parent_skill_id == skill.id,
+            SkillEvolution.status.in_(["pending", "evaluating"]),
+        )
+    )
+    if pending_check.scalar_one_or_none() is not None:
+        logger.info(
+            "auto_evolver: skill %s already has a pending evolution, skipping", skill.id
+        )
+        return None
+
+    # Build prompt and call LLM (sanitize notes to prevent prompt injection)
+    safe_notes = _sanitize_notes(failure_notes)
+    notes_text = "\n".join(f"- {n}" for n in safe_notes) if safe_notes else "(no notes)"
     prompt = _IMPROVE_PROMPT.format(
         skill_md=current_skill_md,
         failure_notes=notes_text,
@@ -130,7 +154,7 @@ async def maybe_evolve(
     zip_bytes_new = _make_zip(new_skill_md)
     fingerprint = _sha256(zip_bytes_new)
 
-    # Dedup — skip if fingerprint already exists
+    # Dedup — skip if fingerprint already exists as an accepted SkillRecord
     existing = await db.execute(
         select(SkillRecord).where(SkillRecord.content_fingerprint == fingerprint)
     )
@@ -138,9 +162,9 @@ async def maybe_evolve(
         logger.info("auto_evolver: fingerprint already exists for %s, skipping", skill.id)
         return None
 
-    # Persist artifact
+    # Write DB rows first, then persist to filesystem.
+    # If storage.save_artifact fails, the DB transaction rolls back cleanly.
     artifact_id = str(uuid.uuid4())
-    await storage.save_artifact(artifact_id, zip_bytes_new)
 
     artifact = Artifact(
         id=artifact_id,
@@ -151,15 +175,19 @@ async def maybe_evolve(
         created_by=triggered_by,
     )
     db.add(artifact)
-    await db.flush()
+    await db.flush()  # artifact row confirmed in DB before touching filesystem
 
-    # Derive candidate skill_id: strip known suffixes, append _auto_vN
+    # Persist to storage — if this fails the DB transaction will roll back
+    await storage.save_artifact(artifact_id, zip_bytes_new)
+
+    # Derive candidate skill_id
     new_version = _bump_patch(meta.get("version", "1.0.0"))
     candidate_id = f"{skill.id}_auto_{new_version.replace('.', '_')}"
 
+    safe_summary_notes = _sanitize_notes(failure_notes[:3])
     change_summary = (
         f"Auto-evolved from {skill.id} based on execution quality metrics. "
-        f"Failure notes: {'; '.join(failure_notes[:3])}"
+        f"Failure notes: {'; '.join(safe_summary_notes)}"
     )
 
     evo = SkillEvolution(
