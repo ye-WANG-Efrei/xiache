@@ -1,47 +1,81 @@
 # CLAUDE.md — Xiache Project Instructions
 
-## On Every GitHub Commit
+## Branch Strategy
 
-Before committing, update `README.md` to reflect current feature progress:
+Two permanent branches. Always know which branch you're on before committing.
 
-1. Find or create a `## Development Progress` section near the top of README.md (after the one-liner definition).
-2. Update the checklist under each milestone day to reflect what is actually done (`- [x]`) vs pending (`- [ ]`).
-3. Add a brief "Last updated" note with the date and what changed, e.g.:
-   ```
-   > Last updated: 2026-04-09 — Day 1 backend setup complete, /health endpoint live
-   ```
-4. Do not rewrite unrelated sections. Only touch the progress section.
+### `main` — production / user-facing
+Contains:
+- `backend/app/` — all application source code
+- `backend/migrations/` — database migrations
+- `backend/requirements.txt`, `backend/Dockerfile`, `backend/mcp_server.py`
+- `frontend/` — Next.js frontend
+- `docker-compose.yml`, `Makefile`, `.env.example`, `LICENSE`
+- `CLAUDE.md`
+- `README.md` — **user-facing only**: latest news + how to use (no dev docs, no test reports)
+
+Does NOT contain: tests, test reports, dev docs, sprint notes, architecture docs.
+
+### `dev` — development / everything
+Contains everything in `main` plus:
+- `backend/tests/` — pytest test suite
+- `backend/pytest.ini`, `backend/requirements-dev.txt`
+- `*-unit.md` — test result reports
+- `test-plan.md`, `sprint*.md` — dev planning docs
+- `Systemarchitect.md`, `architectbyOpenspace.md`, `frontend-design.md` — architecture docs
+- `README.md` here has the full developer README
+
+### Commit rules
+
+| Change type | Commit to |
+|-------------|-----------|
+| Source code (`backend/app/`, `frontend/src/`) | **both** — commit to `dev` first, then cherry-pick or merge to `main` |
+| Tests (`backend/tests/`) | `dev` only |
+| Test reports (`*-unit.md`) | `dev` only |
+| Dev docs (`sprint*.md`, `test-plan.md`, architecture docs) | `dev` only |
+| README updates | `main` (user-facing section only) + `dev` (full README) |
+| Migrations, Dockerfile, docker-compose | **both** |
+| CLAUDE.md | **both** |
+
+### Default pull target
+
+Always pull from `dev`:
+```bash
+git pull origin dev
+```
+
+When syncing production code to `main`:
+```bash
+git checkout main
+git cherry-pick <commit-sha>   # for specific commits
+# or
+git merge dev --no-ff           # for a batch merge
+git push origin main
+```
+
+### On every commit to `main`
+
+Update the `## 🔔 最新动态` section in `README.md`:
+- Add one bullet with today's date and what changed
+- Keep the list to the last 5–10 entries max
+- Do NOT add progress tables or dev notes to the main README
+
+### On every commit to `dev`
+
+No README requirement. Keep commit messages clear.
+
+---
 
 ## Project Context
 
 - **Repo**: `D:/xiache/xiache`
 - **Goal**: 7-day MVP — Agent-native skill registry (Register → Search → Evolve → Review → Log)
-- **Milestone plan**: see `D:/xiache/milestone.md`
-- **Architecture**: see `Systemarchitect.md`, `architectbyOpenspace.md`
+- **Backend**: FastAPI + SQLAlchemy async + PostgreSQL + pgvector, Python 3.14
+- **Frontend**: Next.js (App Router)
+- **Local dev**: `docker-compose up -d`
 
 ## Development Rules
 
-- Follow the MVP scope in `milestone.md` — do NOT add features outside the MUST HAVE list
+- Follow MVP scope — do NOT add features outside the MUST HAVE list
 - Backend is in `backend/`, frontend in `frontend/`
-- Use `docker-compose.yml` for local dev environment
 - Keep commits focused; one logical change per commit
-
-## README Progress Section Format
-
-```markdown
-## Development Progress
-
-### MVP Status (7-Day Plan)
-
-| Day | Goal | Status |
-|-----|------|--------|
-| Day 1 | Backend Setup | ✅ Done |
-| Day 2 | Skill Registration | 🔄 In Progress |
-| Day 3 | Skill Search | ⬜ Pending |
-| Day 4 | Evolution Submission | ⬜ Pending |
-| Day 5 | Evolution Review | ⬜ Pending |
-| Day 6 | Execution Run Logging | ⬜ Pending |
-| Day 7 | Integration & Demo | ⬜ Pending |
-
-> Last updated: YYYY-MM-DD — [what changed]
-```
