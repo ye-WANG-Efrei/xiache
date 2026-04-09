@@ -56,7 +56,12 @@ docker-compose up -d
 服务默认运行在 `http://localhost:8000`，API 文档：`http://localhost:8000/docs`
 
 ---
+### 关闭服务  
 
+```
+make down
+```
+---
 ## 核心工作流
 
 ### 1. 注册一个 Skill
