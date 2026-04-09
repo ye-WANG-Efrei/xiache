@@ -953,15 +953,21 @@ async def get_current_api_key(authorization: str):
 git clone <repo-url>
 cd xiache
 
-# 2. 复制环境变量（可选，有默认值）
+# 2. 一键启动（推荐）
+make bootstrap
+# 会自动：
+# - 在 .env 不存在时从 .env.example 创建
+# - 启动/构建全部服务
+# - 在容器内执行数据库初始化 SQL
+
+# 3. 查看日志
+make logs
+
+# （可选）如果你想手动控制，也可以不用 bootstrap：
 cp .env.example .env
 # 编辑 .env，至少修改 SECRET_KEY
-
-# 3. 启动所有服务
-docker-compose up -d
-
-# 4. 查看日志
-docker-compose logs -f
+make up
+make init-db
 
 # （可选）使用封装好的 Makefile（推荐）
 make bootstrap  # 真正一键：自动创建 .env（若不存在）+ 启动全部服务 + 初始化数据库
