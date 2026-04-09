@@ -191,9 +191,10 @@ export function LineageGraph({ record, allRecords }: LineageGraphProps) {
   );
 
   const handleNodeClick = useCallback(
-    (node: GraphNode) => {
-      if (node.id !== record.record_id) {
-        router.push(`/skills/${encodeURIComponent(node.id)}`);
+    (node: object) => {
+      const n = node as GraphNode;
+      if (n.id !== record.record_id) {
+        router.push(`/skills/${encodeURIComponent(n.id)}`);
       }
     },
     [record.record_id, router]
@@ -278,21 +279,25 @@ export function LineageGraph({ record, allRecords }: LineageGraphProps) {
           graphData={{ nodes, links }}
           width={width}
           height={340}
-          nodeLabel={(node: GraphNode) =>
-            `${node.name}${node.kind !== "current" ? "\n(click to view)" : ""}`
-          }
-          nodeColor={(node: GraphNode) => NODE_COLOR[node.kind]}
+          nodeLabel={(node) => {
+            const n = node as GraphNode;
+            return `${n.name}${n.kind !== "current" ? "\n(click to view)" : ""}`;
+          }}
+          nodeColor={(node) => NODE_COLOR[(node as GraphNode).kind]}
           nodeRelSize={6}
           linkColor={() => "#cbd5e1"}
           linkDirectionalArrowLength={5}
           linkDirectionalArrowRelPos={1}
           linkWidth={1.5}
           onNodeClick={handleNodeClick}
-          nodeCanvasObject={paintNode}
-          nodePointerAreaPaint={(node: GraphNode, color: string, ctx: CanvasRenderingContext2D) => {
-            const r = NODE_RADIUS[node.kind] + 4; // larger hit area
+          nodeCanvasObject={(node, ctx, globalScale) =>
+            paintNode(node as GraphNode, ctx, globalScale)
+          }
+          nodePointerAreaPaint={(node, color, ctx) => {
+            const n = node as GraphNode;
+            const r = NODE_RADIUS[n.kind] + 4; // larger hit area
             ctx.beginPath();
-            ctx.arc(node.x ?? 0, node.y ?? 0, r, 0, 2 * Math.PI);
+            ctx.arc(n.x ?? 0, n.y ?? 0, r, 0, 2 * Math.PI);
             ctx.fillStyle = color;
             ctx.fill();
           }}

@@ -11,6 +11,9 @@ WORKDIR /app
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
 
+# Next.js may have no `public/` in repo; runtime stage COPY requires it to exist
+RUN mkdir -p public
+
 # Build-time env (can be overridden by passing --build-arg or env in compose)
 ARG NEXT_PUBLIC_API_URL=http://localhost:8000
 ARG NEXT_PUBLIC_API_KEY=dev-key-for-testing
