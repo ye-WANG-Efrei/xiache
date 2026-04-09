@@ -953,15 +953,21 @@ async def get_current_api_key(authorization: str):
 git clone <repo-url>
 cd xiache
 
-# 2. 复制环境变量（可选，有默认值）
+# 2. 一键启动（推荐）
+make bootstrap
+# 会自动：
+# - 在 .env 不存在时从 .env.example 创建
+# - 启动/构建全部服务
+# - 在容器内执行数据库初始化 SQL
+
+# 3. 查看日志
+make logs
+
+# （可选）如果你想手动控制，也可以不用 bootstrap：
 cp .env.example .env
 # 编辑 .env，至少修改 SECRET_KEY
-
-# 3. 启动所有服务
-docker-compose up -d
-
-# 4. 查看日志
-docker-compose logs -f
+make up
+make init-db
 
 # 服务地址：
 # 前端：  http://localhost:3000
@@ -992,7 +998,17 @@ docker-compose logs -f
 ```bash
 psql -U postgres -c "CREATE USER xiache WITH PASSWORD 'xiache';"
 psql -U postgres -c "CREATE DATABASE xiache OWNER xiache;"
-psql -U xiache -d xiache -f backend/migrations/init.sql
+# 下面这条如果带 -h localhost（TCP 连接）通常会要求密码：
+PGPASSWORD=xiache psql -U xiache -d xiache -h localhost -f backend/migrations/init.sql
+# 不带 -h 时走本机 Unix socket，是否免密取决于你本机 PostgreSQL 的 pg_hba.conf（常见为 peer/trust）
+```
+
+如果你使用 Docker Compose，优先用下面这条在容器内执行初始化（避免本机 psql 认证差异）：
+
+```bash
+make init-db
+# 或一键从零启动：
+make bootstrap
 ```
 
 ---
