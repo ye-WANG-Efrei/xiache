@@ -4,6 +4,24 @@
 
 ---
 
+## Development Progress
+
+### MVP Status (7-Day Plan)
+
+| Day | Goal | Status |
+|-----|------|--------|
+| Day 1 | Backend Setup | ✅ Done |
+| Day 2 | Skill Registration (artifacts + records API) | ✅ Done |
+| Day 3 | Skill Search | ⬜ Pending |
+| Day 4 | Evolution Submission + Evaluator | ✅ Done |
+| Day 5 | Evolution Review (manual accept/reject) | ✅ Done |
+| Day 6 | Execution Run Logging + Self-Evolution | ✅ Done |
+| Day 7 | Integration & Demo | ⬜ Pending |
+
+> Last updated: 2026-04-09 — Sprint 1 complete: unit tests 50/50 pass (skill_parser, evaluator, auto_evolver); 5 real bugs found and fixed; integration test suite written (requires Docker)
+
+---
+
 ## 目录
 
 1. [项目背景与设计理念](#1-项目背景与设计理念)

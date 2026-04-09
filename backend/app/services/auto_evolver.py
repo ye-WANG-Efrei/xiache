@@ -51,15 +51,16 @@ _MAX_NOTE_LEN = 500  # characters per note — guards against prompt injection
 
 
 def _sanitize_notes(notes: list[str]) -> list[str]:
-    return [n[:_MAX_NOTE_LEN].replace("</", "<\\/") for n in notes]
+    # Escape first, then truncate — prevents truncation mid-tag leaving a dangling "</"
+    return [n.replace("</", "<\\/")[:_MAX_NOTE_LEN] for n in notes]
 
 
 def _bump_patch(version: str) -> str:
     """Increment patch number: 1.2.3 → 1.2.4, handles pre-release like 1.0.3-beta.1."""
     parts = version.split(".")
     if len(parts) >= 3:
-        # Strip pre-release suffix before checking digits
-        patch_numeric = parts[2].split("-")[0]
+        # Strip pre-release (-beta.1) AND build metadata (+build.1) before parsing digits
+        patch_numeric = parts[2].split("-")[0].split("+")[0]
         if patch_numeric.isdigit():
             parts[2] = str(int(patch_numeric) + 1)
             return ".".join(parts[:3])  # drop pre-release suffix in bumped version

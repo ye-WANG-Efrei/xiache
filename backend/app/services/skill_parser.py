@@ -43,10 +43,12 @@ def parse_skill_md(zip_bytes: bytes) -> dict[str, Any]:
                 None,
             )
             if skill_name is None:
-                return {"name": "", "description": "", "tags": [], "body": ""}
+                return {"name": "", "description": "", "version": "", "tags": [], "body": "",
+                        "input_schema": {}, "output_schema": {}}
             raw = zf.read(skill_name).decode("utf-8", errors="replace")
     except zipfile.BadZipFile:
-        return {"name": "", "description": "", "tags": [], "body": ""}
+        return {"name": "", "description": "", "version": "1.0.0", "tags": [], "body": "",
+                "input_schema": {}, "output_schema": {}}
 
     meta, body = _parse_frontmatter(raw)
 
@@ -67,7 +69,7 @@ def parse_skill_md(zip_bytes: bytes) -> dict[str, Any]:
     return {
         "name": str(meta.get("name", "")).strip(),
         "description": str(meta.get("description", "")).strip(),
-        "version": str(meta.get("version", "1.0.0")).strip(),
+        "version": str(meta.get("version", "")).strip(),
         "tags": [str(t) for t in tags],
         "input_schema": input_schema,
         "output_schema": output_schema,

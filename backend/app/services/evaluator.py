@@ -197,6 +197,8 @@ def evaluate_evolution(
         or not checks["no_dangerous_patterns"]
         or not checks["artifact_accessible"]
         or is_duplicate
+        or not checks["version_valid"]
+        or not parent_exists
     )
     passed = quality_score >= 0.5 and not hard_fail
 
