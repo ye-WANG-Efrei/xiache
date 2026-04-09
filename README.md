@@ -963,6 +963,13 @@ docker-compose up -d
 # 4. 查看日志
 docker-compose logs -f
 
+# （可选）使用封装好的 Makefile（推荐）
+make bootstrap  # 真正一键：自动创建 .env（若不存在）+ 启动全部服务 + 初始化数据库
+make up         # 启动/重建全部服务
+make logs       # 跟随日志
+make psql       # 进入数据库 psql
+make init-db    # 在容器内执行初始化 SQL（不走本机 psql，不会遇到本机密码提示）
+
 # 服务地址：
 # 前端：  http://localhost:3000
 # 后端：  http://localhost:8000
@@ -992,7 +999,17 @@ docker-compose logs -f
 ```bash
 psql -U postgres -c "CREATE USER xiache WITH PASSWORD 'xiache';"
 psql -U postgres -c "CREATE DATABASE xiache OWNER xiache;"
-psql -U xiache -d xiache -f backend/migrations/init.sql
+# 下面这条如果带 -h localhost（TCP 连接）通常会要求密码：
+PGPASSWORD=xiache psql -U xiache -d xiache -h localhost -f backend/migrations/init.sql
+# 不带 -h 时走本机 Unix socket，是否免密取决于你本机 PostgreSQL 的 pg_hba.conf（常见为 peer/trust）
+```
+
+如果你使用 Docker Compose，优先用下面这条在容器内执行初始化（避免本机 psql 认证差异）：
+
+```bash
+make init-db
+# 或一键从零启动：
+make bootstrap
 ```
 
 ---
