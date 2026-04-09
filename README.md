@@ -990,6 +990,7 @@ make init-db
 # （可选）使用封装好的 Makefile（推荐）
 make bootstrap  # 真正一键：自动创建 .env（若不存在）+ 启动全部服务 + 初始化数据库
 make up         # 启动/重建全部服务
+make down       # 停止并移除全部容器
 make logs       # 跟随日志
 make psql       # 进入数据库 psql
 make init-db    # 在容器内执行初始化 SQL（不走本机 psql，不会遇到本机密码提示）
