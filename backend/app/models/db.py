@@ -65,7 +65,10 @@ class SkillRecord(Base):
     origin: Mapped[str] = mapped_column(String(64), nullable=False)
     visibility: Mapped[str] = mapped_column(String(64), nullable=False, default="public")
     level: Mapped[str] = mapped_column(String(64), nullable=False, default="tool_guide")
+    version: Mapped[str] = mapped_column(String(64), nullable=False, default="1.0.0")
     tags: Mapped[list[str]] = mapped_column(JSONB, nullable=False, default=list)
+    input_schema: Mapped[dict] = mapped_column(JSONB, nullable=False, default=dict)
+    output_schema: Mapped[dict] = mapped_column(JSONB, nullable=False, default=dict)
     created_by: Mapped[str] = mapped_column(String(255), nullable=False, default="")
     change_summary: Mapped[str] = mapped_column(Text, nullable=False, default="")
     content_diff: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
@@ -74,6 +77,12 @@ class SkillRecord(Base):
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=utcnow, nullable=False
     )
+
+    # Quality counters — updated on every OpenSpace execution ingest
+    total_selections: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    total_applied: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    total_completions: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    total_fallbacks: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
 
     # Relationships
     artifact: Mapped["Artifact"] = relationship("Artifact", back_populates="records")
@@ -128,6 +137,7 @@ class SkillEvolution(Base):
     )
     origin: Mapped[str] = mapped_column(String(64), nullable=False)
     status: Mapped[str] = mapped_column(String(32), nullable=False, default="pending", index=True)
+    candidate_skill_id: Mapped[Optional[str]] = mapped_column(String(255), nullable=True, index=True)
     proposed_name: Mapped[str] = mapped_column(String(255), nullable=False, default="")
     proposed_desc: Mapped[str] = mapped_column(Text, nullable=False, default="")
     change_summary: Mapped[str] = mapped_column(Text, nullable=False, default="")

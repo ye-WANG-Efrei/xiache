@@ -70,12 +70,16 @@ def _record_to_response(
     return RecordResponse(
         record_id=record.id,
         artifact_id=record.artifact_id,
+        artifact_ref=f"artifact://{record.id}",
         name=record.name,
         description=record.description,
+        version=record.version,
         origin=record.origin,
         visibility=record.visibility,
         level=record.level,
         tags=record.tags,
+        input_schema=record.input_schema,
+        output_schema=record.output_schema,
         created_by=record.created_by,
         change_summary=record.change_summary,
         content_diff=record.content_diff,
@@ -168,6 +172,13 @@ async def create_record(
     # Merge tags: SKILL.md tags + request tags, deduplicated
     merged_tags = list(dict.fromkeys(skill_meta["tags"] + body.tags))
 
+    # Schemas: request overrides SKILL.md if non-empty
+    input_schema = body.input_schema or skill_meta["input_schema"]
+    output_schema = body.output_schema or skill_meta["output_schema"]
+
+    # Version: request overrides SKILL.md if not default
+    version = body.version if body.version != "1.0.0" else (skill_meta["version"] or "1.0.0")
+
     # Generate embedding
     emb_text = emb_service.build_embedding_text(
         skill_meta["name"] or body.record_id,
@@ -182,10 +193,13 @@ async def create_record(
         artifact_id=body.artifact_id,
         name=skill_meta["name"] or body.record_id,
         description=skill_meta["description"],
+        version=version,
         origin=body.origin,
         visibility=body.visibility,
         level=body.level,
         tags=merged_tags,
+        input_schema=input_schema,
+        output_schema=output_schema,
         created_by=body.created_by or owner,
         change_summary=body.change_summary or "",
         content_diff=body.content_diff,
@@ -275,12 +289,16 @@ async def list_records_metadata(
             RecordMetadataItem(
                 record_id=rec.id,
                 artifact_id=rec.artifact_id,
+                artifact_ref=f"artifact://{rec.id}",
                 name=rec.name,
                 description=rec.description,
+                version=rec.version,
                 origin=rec.origin,
                 visibility=rec.visibility,
                 level=rec.level,
                 tags=rec.tags,
+                input_schema=rec.input_schema,
+                output_schema=rec.output_schema,
                 created_by=rec.created_by,
                 change_summary=rec.change_summary,
                 content_fingerprint=rec.content_fingerprint,

@@ -1,12 +1,17 @@
--- xiache initial schema
--- Run this against a PostgreSQL 16+ database with the pgvector extension available.
+-- Xiache full schema (run on a fresh PostgreSQL 16+ with pgvector)
+-- Apply order for existing DBs:
+--   1. init.sql  (this file — idempotent, safe to re-run)
+--   2. add_evolutions.sql
+--   3. add_execution_runs.sql
+--   4. add_skill_structured_fields.sql
 
--- Enable pgvector
 CREATE EXTENSION IF NOT EXISTS vector;
 
+-- ---------------------------------------------------------------------------
 -- API Keys
+-- ---------------------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS api_keys (
-    id          SERIAL PRIMARY KEY,
+    id          SERIAL       PRIMARY KEY,
     key_hash    CHAR(64)     NOT NULL UNIQUE,
     name        VARCHAR(255) NOT NULL,
     owner       VARCHAR(255) NOT NULL,
@@ -16,9 +21,11 @@ CREATE TABLE IF NOT EXISTS api_keys (
 
 CREATE INDEX IF NOT EXISTS idx_api_keys_key_hash ON api_keys (key_hash);
 
--- Artifacts (staged ZIP files)
+-- ---------------------------------------------------------------------------
+-- Artifacts  (raw ZIP content — the "source of truth" for a skill version)
+-- ---------------------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS artifacts (
-    id                   VARCHAR(36)  PRIMARY KEY,         -- UUID
+    id                   VARCHAR(36)  PRIMARY KEY,   -- UUID
     file_count           INTEGER      NOT NULL,
     file_names           JSONB        NOT NULL DEFAULT '[]',
     content_fingerprint  CHAR(64)     NOT NULL,
@@ -28,16 +35,21 @@ CREATE TABLE IF NOT EXISTS artifacts (
 
 CREATE INDEX IF NOT EXISTS idx_artifacts_fingerprint ON artifacts (content_fingerprint);
 
--- Skill Records
+-- ---------------------------------------------------------------------------
+-- Skill Records  (parsed metadata for a versioned, accepted skill)
+-- ---------------------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS skill_records (
-    id                   VARCHAR(255) PRIMARY KEY,
-    artifact_id          VARCHAR(36)  NOT NULL REFERENCES artifacts (id) ON DELETE RESTRICT,
+    id                   VARCHAR(255) PRIMARY KEY,   -- human-readable skill_id
+    artifact_id          VARCHAR(36)  NOT NULL REFERENCES artifacts(id) ON DELETE RESTRICT,
     name                 VARCHAR(255) NOT NULL,
     description          TEXT         NOT NULL DEFAULT '',
-    origin               VARCHAR(64)  NOT NULL,
+    version              VARCHAR(64)  NOT NULL DEFAULT '1.0.0',
+    origin               VARCHAR(64)  NOT NULL,      -- imported | captured | derived | fixed
     visibility           VARCHAR(64)  NOT NULL DEFAULT 'public',
     level                VARCHAR(64)  NOT NULL DEFAULT 'tool_guide',
     tags                 JSONB        NOT NULL DEFAULT '[]',
+    input_schema         JSONB        NOT NULL DEFAULT '{}',
+    output_schema        JSONB        NOT NULL DEFAULT '{}',
     created_by           VARCHAR(255) NOT NULL DEFAULT '',
     change_summary       TEXT         NOT NULL DEFAULT '',
     content_diff         TEXT,
@@ -52,29 +64,74 @@ CREATE INDEX IF NOT EXISTS idx_skill_records_artifact    ON skill_records (artif
 CREATE INDEX IF NOT EXISTS idx_skill_records_created_at  ON skill_records (created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_skill_records_visibility  ON skill_records (visibility);
 
--- Vector index for approximate nearest-neighbour search (cosine)
 CREATE INDEX IF NOT EXISTS idx_skill_records_embedding
     ON skill_records USING ivfflat (embedding vector_cosine_ops)
     WITH (lists = 100);
 
--- Full-text search index (GIN on tsvector of name + description)
 CREATE INDEX IF NOT EXISTS idx_skill_records_fts
     ON skill_records USING GIN(to_tsvector('english', name || ' ' || description));
 
--- Skill Lineage (DAG edges)
+-- ---------------------------------------------------------------------------
+-- Skill Lineage  (DAG: which skill evolved from which)
+-- ---------------------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS skill_lineage (
-    child_id   VARCHAR(255) NOT NULL REFERENCES skill_records (id) ON DELETE CASCADE,
-    parent_id  VARCHAR(255) NOT NULL REFERENCES skill_records (id) ON DELETE CASCADE,
+    child_id   VARCHAR(255) NOT NULL REFERENCES skill_records(id) ON DELETE CASCADE,
+    parent_id  VARCHAR(255) NOT NULL REFERENCES skill_records(id) ON DELETE CASCADE,
     PRIMARY KEY (child_id, parent_id)
 );
 
 CREATE INDEX IF NOT EXISTS idx_lineage_parent ON skill_lineage (parent_id);
 CREATE INDEX IF NOT EXISTS idx_lineage_child  ON skill_lineage (child_id);
 
--- Dev seed: insert a dev API key (SHA256 of "dev-key-for-testing")
--- Only useful when XIACHE_DEV_MODE=false but you still want a DB key for testing.
--- SHA256("dev-key-for-testing") = 9e4a3a6e77f9e3cd4cf6e8b3fecf4d78d4e9a847afac9e23b21d4bfc3c1a3c98
--- (Commented out — enable XIACHE_DEV_MODE=true in .env instead for local dev)
--- INSERT INTO api_keys (key_hash, name, owner, is_active)
--- VALUES ('9e4a3a6e77f9e3cd4cf6e8b3fecf4d78d4e9a847afac9e23b21d4bfc3c1a3c98', 'dev-key', 'dev', true)
--- ON CONFLICT (key_hash) DO NOTHING;
+-- ---------------------------------------------------------------------------
+-- Skill Evolutions  (PR-like proposals: new/changed skill awaiting review)
+-- ---------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS skill_evolutions (
+    id                  VARCHAR(36)  PRIMARY KEY,        -- UUID
+    artifact_id         VARCHAR(36)  NOT NULL REFERENCES artifacts(id) ON DELETE RESTRICT,
+    parent_skill_id     VARCHAR(255) REFERENCES skill_records(id) ON DELETE SET NULL,
+    candidate_skill_id  VARCHAR(255),                   -- desired record_id on accept, e.g. "blink_led_v2"
+    origin              VARCHAR(64)  NOT NULL,           -- fixed | derived | captured
+    status              VARCHAR(32)  NOT NULL DEFAULT 'pending', -- pending | evaluating | accepted | rejected
+    proposed_name       VARCHAR(255) NOT NULL DEFAULT '',
+    proposed_desc    TEXT         NOT NULL DEFAULT '',
+    change_summary   TEXT         NOT NULL DEFAULT '',
+    content_diff     TEXT,
+    proposed_by      VARCHAR(255) NOT NULL DEFAULT '',  -- agent:xxx or api-key owner
+    tags             JSONB        NOT NULL DEFAULT '[]',
+    proposed_at      TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+    evaluated_at     TIMESTAMPTZ,
+    result_record_id VARCHAR(255) REFERENCES skill_records(id) ON DELETE SET NULL,
+    evaluation_notes TEXT         NOT NULL DEFAULT '',
+    quality_score    FLOAT,
+    auto_accepted    BOOLEAN      NOT NULL DEFAULT FALSE
+);
+
+CREATE INDEX IF NOT EXISTS idx_evolutions_status       ON skill_evolutions (status);
+CREATE INDEX IF NOT EXISTS idx_evolutions_parent       ON skill_evolutions (parent_skill_id);
+CREATE INDEX IF NOT EXISTS idx_evolutions_candidate    ON skill_evolutions (candidate_skill_id);
+CREATE INDEX IF NOT EXISTS idx_evolutions_proposed_at  ON skill_evolutions (proposed_at DESC);
+CREATE INDEX IF NOT EXISTS idx_evolutions_proposed_by  ON skill_evolutions (proposed_by);
+
+-- ---------------------------------------------------------------------------
+-- Execution Runs  (every time a skill was invoked — audit log)
+-- ---------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS execution_runs (
+    id             VARCHAR(36)  PRIMARY KEY,           -- UUID
+    skill_id       VARCHAR(255) REFERENCES skill_records(id) ON DELETE SET NULL,
+    task           TEXT         NOT NULL DEFAULT '',   -- what the caller asked for
+    status         VARCHAR(32)  NOT NULL DEFAULT 'running', -- running | done | failed
+    executor_type  VARCHAR(32)  NOT NULL DEFAULT 'reasoning', -- reasoning | digital | physical
+    target_env     JSONB        NOT NULL DEFAULT '{}', -- e.g. {"platform": "esp32"}
+    started_at     TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+    completed_at   TIMESTAMPTZ,
+    result         TEXT,
+    error          TEXT,
+    run_log        TEXT,
+    called_by      VARCHAR(255) NOT NULL DEFAULT ''    -- agent:xxx or api-key owner
+);
+
+CREATE INDEX IF NOT EXISTS idx_runs_skill_id   ON execution_runs (skill_id);
+CREATE INDEX IF NOT EXISTS idx_runs_status     ON execution_runs (status);
+CREATE INDEX IF NOT EXISTS idx_runs_started_at ON execution_runs (started_at DESC);
+CREATE INDEX IF NOT EXISTS idx_runs_called_by  ON execution_runs (called_by);

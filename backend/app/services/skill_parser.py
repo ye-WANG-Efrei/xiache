@@ -56,9 +56,20 @@ def parse_skill_md(zip_bytes: bytes) -> dict[str, Any]:
     elif not isinstance(tags, list):
         tags = []
 
+    input_schema = meta.get("input_schema", {})
+    if not isinstance(input_schema, dict):
+        input_schema = {}
+
+    output_schema = meta.get("output_schema", {})
+    if not isinstance(output_schema, dict):
+        output_schema = {}
+
     return {
         "name": str(meta.get("name", "")).strip(),
         "description": str(meta.get("description", "")).strip(),
+        "version": str(meta.get("version", "1.0.0")).strip(),
         "tags": [str(t) for t in tags],
+        "input_schema": input_schema,
+        "output_schema": output_schema,
         "body": body,
     }

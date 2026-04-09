@@ -57,6 +57,7 @@ def _evolution_to_response(
         proposed_name=evo.proposed_name,
         proposed_desc=evo.proposed_desc,
         parent_skill_id=evo.parent_skill_id,
+        candidate_skill_id=evo.candidate_skill_id,
         origin=evo.origin,
         proposed_by=evo.proposed_by,
         proposed_at=evo.proposed_at,
@@ -109,18 +110,21 @@ async def _create_skill_record_from_evolution(
     )
     embedding = await emb_service.generate_embedding(emb_text)
 
-    # Use a deterministic record id derived from the evolution id.
-    record_id = f"evo:{evo.id}"
+    # Use candidate_skill_id if provided, otherwise fall back to evo:<uuid>
+    record_id = evo.candidate_skill_id or f"evo:{evo.id}"
 
     record = SkillRecord(
         id=record_id,
         artifact_id=evo.artifact_id,
         name=skill_meta["name"] or evo.id,
         description=skill_meta["description"],
+        version=skill_meta.get("version", "1.0.0"),
         origin=evo.origin,
         visibility="public",
         level="tool_guide",
         tags=merged_tags,
+        input_schema=skill_meta.get("input_schema", {}),
+        output_schema=skill_meta.get("output_schema", {}),
         created_by=evo.proposed_by or owner,
         change_summary=evo.change_summary,
         content_diff=evo.content_diff,
@@ -169,21 +173,52 @@ async def propose_evolution(
         )
 
     # Load zip and parse SKILL.md
-    zip_bytes = await storage.load_artifact(body.artifact_id)
-    skill_meta = parse_skill_md(zip_bytes)
+    try:
+        zip_bytes = await storage.load_artifact(body.artifact_id)
+        artifact_accessible = True
+    except Exception:
+        zip_bytes = b""
+        artifact_accessible = False
+
+    skill_meta = parse_skill_md(zip_bytes) if artifact_accessible else {
+        "name": "", "description": "", "version": "0.0.0",
+        "tags": [], "input_schema": {}, "output_schema": {}, "body": "",
+    }
 
     proposed_name = skill_meta["name"]
     proposed_desc = skill_meta["description"]
-    skill_body = skill_meta["body"]
+    skill_body    = skill_meta["body"]
 
-    # Run evaluation (synchronous pure-Python checks)
+    # Pre-check 1: parent exists in DB (required when origin is derived/fixed)
+    if body.parent_skill_id:
+        parent_result = await db.execute(
+            select(SkillRecord).where(SkillRecord.id == body.parent_skill_id)
+        )
+        parent_exists = parent_result.scalar_one_or_none() is not None
+    else:
+        parent_exists = True  # captured origin — no parent needed
+
+    # Pre-check 2: duplicate detection via content fingerprint
+    dup_result = await db.execute(
+        select(SkillRecord).where(
+            SkillRecord.content_fingerprint == artifact.content_fingerprint
+        )
+    )
+    is_duplicate = dup_result.scalar_one_or_none() is not None
+
+    # Run evaluation
     eval_result: EvaluationResult = evaluate_evolution(
         skill_name=proposed_name,
         skill_description=proposed_desc,
         skill_body=skill_body,
+        skill_version=skill_meta.get("version", ""),
+        skill_tags=skill_meta.get("tags", []),
         origin=body.origin,
         parent_skill_id=body.parent_skill_id,
         change_summary=body.change_summary,
+        parent_exists=parent_exists,
+        artifact_accessible=artifact_accessible,
+        is_duplicate=is_duplicate,
     )
 
     now = _utcnow()
@@ -201,6 +236,7 @@ async def propose_evolution(
         id=evo_id,
         artifact_id=body.artifact_id,
         parent_skill_id=body.parent_skill_id,
+        candidate_skill_id=body.candidate_skill_id,
         origin=body.origin,
         status="evaluating",          # transient — updated below
         proposed_name=proposed_name,

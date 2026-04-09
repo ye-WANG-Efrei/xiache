@@ -43,6 +43,16 @@ class Settings(BaseSettings):
     # Evolution workflow
     AUTO_ACCEPT_THRESHOLD: float = 0.6
 
+    # LLM for auto-evolution (OpenAI-compatible)
+    LLM_API_KEY: Optional[str] = None
+    LLM_API_BASE: Optional[str] = None
+    LLM_MODEL: str = "gpt-4o-mini"
+
+    # Auto-evolver quality thresholds
+    AUTOEVO_MIN_SELECTIONS: int = 5      # minimum runs before evaluation
+    AUTOEVO_FALLBACK_RATE: float = 0.40  # trigger if fallback_rate exceeds this
+    AUTOEVO_COMPLETION_RATE: float = 0.35 # trigger if completion_rate below this
+
 
 @lru_cache
 def get_settings() -> Settings:
