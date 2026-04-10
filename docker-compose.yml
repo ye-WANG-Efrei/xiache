@@ -69,8 +69,9 @@ services:
       backend:
         condition: service_healthy
     environment:
-      NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://backend:8000}
+      NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-}
       NEXT_PUBLIC_API_KEY: ${NEXT_PUBLIC_API_KEY:-dev-key-for-testing}
+      INTERNAL_API_URL: http://backend:8000
     ports:
       - "${FRONTEND_PORT:-3000}:3000"
 
