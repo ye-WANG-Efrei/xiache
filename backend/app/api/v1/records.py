@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import base64
+import hashlib
 import json
 import logging
 from datetime import datetime, timezone
@@ -9,12 +10,10 @@ from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import selectinload
 
 from app.api.v1.deps import require_auth
-from app.core import storage
 from app.core.database import get_db
-from app.models.db import Artifact, SkillLineage, SkillRecord
+from app.models.db import SkillLineage, SkillRecord
 from app.schemas.api import (
     CreateRecordRequest,
     ErrorResponse,
@@ -23,7 +22,6 @@ from app.schemas.api import (
     RecordResponse,
 )
 from app.services import embedding as emb_service
-from app.services.skill_parser import parse_skill_md
 
 logger = logging.getLogger(__name__)
 
@@ -33,6 +31,11 @@ router = APIRouter(prefix="/records", tags=["records"])
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
+
+def _fingerprint(name: str, description: str, body: str) -> str:
+    content = f"{name}\n{description}\n{body}"
+    return hashlib.sha256(content.encode()).hexdigest()
 
 
 def _encode_cursor(record_id: str, created_at: datetime) -> str:
@@ -73,6 +76,7 @@ def _record_to_response(
         artifact_ref=f"artifact://{record.id}",
         name=record.name,
         description=record.description,
+        body=record.body,
         version=record.version,
         origin=record.origin,
         visibility=record.visibility,
@@ -108,46 +112,29 @@ async def create_record(
     owner: str = Depends(require_auth),
     db: AsyncSession = Depends(get_db),
 ) -> RecordResponse:
-    # Check that the artifact exists
-    artifact_result = await db.execute(
-        select(Artifact).where(Artifact.id == body.artifact_id)
-    )
-    artifact = artifact_result.scalar_one_or_none()
-    if artifact is None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Artifact {body.artifact_id!r} not found. Stage it first.",
-        )
+    fingerprint = _fingerprint(body.name, body.description, body.body)
 
-    # Dedup checks
-    existing_by_id_result = await db.execute(
+    # Dedup: same record_id
+    existing_by_id = (await db.execute(
         select(SkillRecord).where(SkillRecord.id == body.record_id)
-    )
-    existing_by_id: Optional[SkillRecord] = existing_by_id_result.scalar_one_or_none()
+    )).scalar_one_or_none()
 
-    existing_by_fp_result = await db.execute(
-        select(SkillRecord).where(
-            SkillRecord.content_fingerprint == artifact.content_fingerprint
-        )
-    )
-    existing_by_fp: Optional[SkillRecord] = existing_by_fp_result.scalar_one_or_none()
+    # Dedup: same content fingerprint
+    existing_by_fp = (await db.execute(
+        select(SkillRecord).where(SkillRecord.content_fingerprint == fingerprint)
+    )).scalar_one_or_none()
 
     if existing_by_id is not None:
-        if existing_by_id.content_fingerprint != artifact.content_fingerprint:
-            # Same record_id, different content
+        if existing_by_id.content_fingerprint != fingerprint:
             raise HTTPException(
                 status_code=status.HTTP_409_CONFLICT,
                 detail=ErrorResponse(
                     error="record_id_fingerprint_conflict",
-                    detail=(
-                        f"Record {body.record_id!r} already exists with a "
-                        "different content fingerprint."
-                    ),
+                    detail=f"Record {body.record_id!r} already exists with different content.",
                     existing_record_id=existing_by_id.id,
                     fingerprint=existing_by_id.content_fingerprint,
                 ).model_dump(),
             )
-        # Exact duplicate — idempotent OK, return the existing record
         parent_ids = await _get_parent_ids(db, existing_by_id.id)
         return _record_to_response(existing_by_id, parent_ids)
 
@@ -156,67 +143,43 @@ async def create_record(
             status_code=status.HTTP_409_CONFLICT,
             detail=ErrorResponse(
                 error="fingerprint_record_id_conflict",
-                detail=(
-                    f"Content fingerprint already registered under record "
-                    f"{existing_by_fp.id!r}."
-                ),
+                detail=f"Same content already registered under record {existing_by_fp.id!r}.",
                 existing_record_id=existing_by_fp.id,
-                fingerprint=artifact.content_fingerprint,
+                fingerprint=fingerprint,
             ).model_dump(),
         )
 
-    # Parse SKILL.md from zip
-    zip_bytes = await storage.load_artifact(body.artifact_id)
-    skill_meta = parse_skill_md(zip_bytes)
-
-    # Merge tags: SKILL.md tags + request tags, deduplicated
-    merged_tags = list(dict.fromkeys(skill_meta["tags"] + body.tags))
-
-    # Schemas: request overrides SKILL.md if non-empty
-    input_schema = body.input_schema or skill_meta["input_schema"]
-    output_schema = body.output_schema or skill_meta["output_schema"]
-
-    # Version: request overrides SKILL.md if not default
-    version = body.version if body.version != "1.0.0" else (skill_meta["version"] or "1.0.0")
-
     # Generate embedding
-    emb_text = emb_service.build_embedding_text(
-        skill_meta["name"] or body.record_id,
-        skill_meta["description"],
-        merged_tags,
-    )
+    emb_text = emb_service.build_embedding_text(body.name, body.description, body.tags)
     embedding = await emb_service.generate_embedding(emb_text)
 
-    # Create record
     record = SkillRecord(
         id=body.record_id,
-        artifact_id=body.artifact_id,
-        name=skill_meta["name"] or body.record_id,
-        description=skill_meta["description"],
-        version=version,
+        artifact_id=None,
+        name=body.name,
+        description=body.description,
+        body=body.body,
+        version=body.version,
         origin=body.origin,
         visibility=body.visibility,
         level=body.level,
-        tags=merged_tags,
-        input_schema=input_schema,
-        output_schema=output_schema,
+        tags=body.tags,
+        input_schema=body.input_schema,
+        output_schema=body.output_schema,
         created_by=body.created_by or owner,
         change_summary=body.change_summary or "",
         content_diff=body.content_diff,
-        content_fingerprint=artifact.content_fingerprint,
+        content_fingerprint=fingerprint,
         embedding=embedding,
         created_at=datetime.now(timezone.utc),
     )
     db.add(record)
     await db.flush()
 
-    # Lineage edges
     for parent_id in body.parent_skill_ids:
-        lineage = SkillLineage(child_id=body.record_id, parent_id=parent_id)
-        db.add(lineage)
+        db.add(SkillLineage(child_id=body.record_id, parent_id=parent_id))
 
     await db.flush()
-
     return _record_to_response(record, list(body.parent_skill_ids))
 
 
@@ -234,7 +197,6 @@ async def list_records_metadata(
     owner: str = Depends(require_auth),
     db: AsyncSession = Depends(get_db),
 ) -> RecordMetadataResponse:
-    """Return paginated skill record metadata, optionally with embeddings."""
     q = select(SkillRecord).order_by(SkillRecord.created_at.desc(), SkillRecord.id.desc())
 
     if visibility:
@@ -251,9 +213,7 @@ async def list_records_metadata(
         )
 
     q = q.limit(limit + 1)
-
-    result = await db.execute(q)
-    rows: list[SkillRecord] = list(result.scalars().all())
+    rows: list[SkillRecord] = list((await db.execute(q)).scalars().all())
 
     has_more = len(rows) > limit
     if has_more:
@@ -264,17 +224,14 @@ async def list_records_metadata(
         last = rows[-1]
         next_cursor = _encode_cursor(last.id, last.created_at)
 
-    # Bulk-fetch parent IDs for all returned records
     record_ids = [r.id for r in rows]
-    lineage_result = await db.execute(
+    lineage_rows = (await db.execute(
         select(SkillLineage).where(SkillLineage.child_id.in_(record_ids))
-    )
-    lineage_rows = lineage_result.scalars().all()
+    )).scalars().all()
     parents_map: dict[str, list[str]] = {rid: [] for rid in record_ids}
     for lin in lineage_rows:
         parents_map[lin.child_id].append(lin.parent_id)
 
-    # Total count
     count_q = select(func.count()).select_from(SkillRecord)
     if visibility:
         count_q = count_q.where(SkillRecord.visibility == visibility)
@@ -292,6 +249,7 @@ async def list_records_metadata(
                 artifact_ref=f"artifact://{rec.id}",
                 name=rec.name,
                 description=rec.description,
+                body=rec.body,
                 version=rec.version,
                 origin=rec.origin,
                 visibility=rec.visibility,
@@ -308,12 +266,7 @@ async def list_records_metadata(
             )
         )
 
-    return RecordMetadataResponse(
-        items=items,
-        has_more=has_more,
-        next_cursor=next_cursor,
-        total=total,
-    )
+    return RecordMetadataResponse(items=items, has_more=has_more, next_cursor=next_cursor, total=total)
 
 
 # ---------------------------------------------------------------------------
@@ -328,21 +281,17 @@ async def get_record(
     owner: str = Depends(require_auth),
     db: AsyncSession = Depends(get_db),
 ) -> RecordResponse:
-    result = await db.execute(
+    record = (await db.execute(
         select(SkillRecord).where(SkillRecord.id == record_id)
-    )
-    record = result.scalar_one_or_none()
+    )).scalar_one_or_none()
     if record is None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Record {record_id!r} not found",
-        )
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Record {record_id!r} not found")
     parent_ids = await _get_parent_ids(db, record_id)
     return _record_to_response(record, parent_ids, include_embedding=include_embedding)
 
 
 # ---------------------------------------------------------------------------
-# GET /records/{record_id}/download
+# GET /records/{record_id}/download  — returns Markdown text
 # ---------------------------------------------------------------------------
 
 
@@ -352,29 +301,25 @@ async def download_record(
     owner: str = Depends(require_auth),
     db: AsyncSession = Depends(get_db),
 ) -> Response:
-    result = await db.execute(
+    record = (await db.execute(
         select(SkillRecord).where(SkillRecord.id == record_id)
-    )
-    record = result.scalar_one_or_none()
+    )).scalar_one_or_none()
     if record is None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Record {record_id!r} not found",
-        )
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Record {record_id!r} not found")
 
-    try:
-        zip_bytes = await storage.load_artifact(record.artifact_id)
-    except FileNotFoundError:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Artifact file for record {record_id!r} is missing from storage",
-        )
-
+    tag_lines = "\n".join(f"  - {t}" for t in (record.tags or []))
+    tag_block = f"tags:\n{tag_lines}" if tag_lines else "tags: []"
+    markdown = (
+        f"---\n"
+        f"name: {record.name}\n"
+        f"description: {record.description}\n"
+        f"version: {record.version}\n"
+        f"{tag_block}\n"
+        f"---\n\n"
+        f"{record.body}"
+    )
     return Response(
-        content=zip_bytes,
-        media_type="application/zip",
-        headers={
-            "Content-Disposition": f'attachment; filename="{record_id}.zip"',
-            "Content-Length": str(len(zip_bytes)),
-        },
+        content=markdown.encode("utf-8"),
+        media_type="text/markdown",
+        headers={"Content-Disposition": f'attachment; filename="{record_id}.md"'},
     )

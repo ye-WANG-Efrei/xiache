@@ -12,7 +12,9 @@ from pydantic import BaseModel, Field
 
 
 class ProposeEvolutionRequest(BaseModel):
-    artifact_id: str
+    name: str
+    description: str = ""
+    body: str = ""
     parent_skill_id: Optional[str] = None   # null for brand-new skills
     candidate_skill_id: Optional[str] = None # desired record_id on accept, e.g. "blink_led_v2"
     origin: str  # fixed | derived | captured
@@ -47,37 +49,21 @@ class EvolutionResponse(BaseModel):
 
 
 # ---------------------------------------------------------------------------
-# Artifacts
-# ---------------------------------------------------------------------------
-
-
-class ArtifactStats(BaseModel):
-    file_count: int
-    total_size: int
-
-
-class StageArtifactResponse(BaseModel):
-    artifact_id: str
-    stats: ArtifactStats
-
-
-# ---------------------------------------------------------------------------
 # Records — request
 # ---------------------------------------------------------------------------
 
 
 class CreateRecordRequest(BaseModel):
     record_id: str = Field(..., description="Unique identifier for this skill record")
-    artifact_id: str = Field(..., description="UUID of the previously staged artifact")
+    name: str = Field(..., description="Skill name")
+    description: str = Field("", description="One-line description of what the skill does")
+    body: str = Field("", description="Skill body / instructions (Markdown)")
     origin: str = Field(..., description="imported | captured | derived | fixed")
     visibility: str = Field("public", description="public | group_only")
-    parent_skill_ids: list[str] = Field(
-        default_factory=list,
-        description="IDs of parent skill records (lineage)",
-    )
+    parent_skill_ids: list[str] = Field(default_factory=list)
     tags: list[str] = Field(default_factory=list)
     level: str = Field("tool_guide", description="workflow | tool_guide | reference")
-    version: str = Field("1.0.0", description="Semantic version override (default from SKILL.md)")
+    version: str = Field("1.0.0")
     input_schema: dict[str, Any] = Field(default_factory=dict)
     output_schema: dict[str, Any] = Field(default_factory=dict)
     created_by: Optional[str] = Field(None)
@@ -92,10 +78,11 @@ class CreateRecordRequest(BaseModel):
 
 class RecordResponse(BaseModel):
     record_id: str
-    artifact_id: str
+    artifact_id: Optional[str]
     artifact_ref: str
     name: str
     description: str
+    body: str
     version: str
     origin: str
     visibility: str
@@ -116,10 +103,11 @@ class RecordResponse(BaseModel):
 
 class RecordMetadataItem(BaseModel):
     record_id: str
-    artifact_id: str
+    artifact_id: Optional[str]
     artifact_ref: str
     name: str
     description: str
+    body: str
     version: str
     origin: str
     visibility: str
