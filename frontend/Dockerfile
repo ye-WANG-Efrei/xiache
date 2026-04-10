@@ -17,8 +17,10 @@ RUN mkdir -p public
 # Build-time env (can be overridden by passing --build-arg or env in compose)
 ARG NEXT_PUBLIC_API_URL=
 ARG NEXT_PUBLIC_API_KEY=dev-key-for-testing
+ARG INTERNAL_API_URL=http://backend:8000
 ENV NEXT_PUBLIC_API_URL=$NEXT_PUBLIC_API_URL
 ENV NEXT_PUBLIC_API_KEY=$NEXT_PUBLIC_API_KEY
+ENV INTERNAL_API_URL=$INTERNAL_API_URL
 
 RUN npm run build
 
