@@ -49,19 +49,16 @@ class Artifact(Base):
     )
     created_by: Mapped[str] = mapped_column(String(255), nullable=False)
 
-    # Relationship
-    records: Mapped[list["SkillRecord"]] = relationship("SkillRecord", back_populates="artifact")
-
-
 class SkillRecord(Base):
     __tablename__ = "skill_records"
 
     id: Mapped[str] = mapped_column(String(255), primary_key=True)
-    artifact_id: Mapped[str] = mapped_column(
-        String(36), ForeignKey("artifacts.id", ondelete="RESTRICT"), nullable=False, index=True
+    artifact_id: Mapped[Optional[str]] = mapped_column(
+        String(36), ForeignKey("artifacts.id", ondelete="RESTRICT"), nullable=True, index=True
     )
     name: Mapped[str] = mapped_column(String(255), nullable=False, index=True)
     description: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    body: Mapped[str] = mapped_column(Text, nullable=False, default="")
     origin: Mapped[str] = mapped_column(String(64), nullable=False)
     visibility: Mapped[str] = mapped_column(String(64), nullable=False, default="public")
     level: Mapped[str] = mapped_column(String(64), nullable=False, default="tool_guide")
@@ -84,8 +81,6 @@ class SkillRecord(Base):
     total_completions: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     total_fallbacks: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
 
-    # Relationships
-    artifact: Mapped["Artifact"] = relationship("Artifact", back_populates="records")
     children: Mapped[list["SkillLineage"]] = relationship(
         "SkillLineage",
         foreign_keys="SkillLineage.parent_id",
@@ -129,8 +124,8 @@ class SkillEvolution(Base):
     __tablename__ = "skill_evolutions"
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True)  # UUID
-    artifact_id: Mapped[str] = mapped_column(
-        String(36), ForeignKey("artifacts.id", ondelete="RESTRICT"), nullable=False, index=True
+    artifact_id: Mapped[Optional[str]] = mapped_column(
+        String(36), ForeignKey("artifacts.id", ondelete="RESTRICT"), nullable=True, index=True
     )
     parent_skill_id: Mapped[Optional[str]] = mapped_column(
         String(255), ForeignKey("skill_records.id", ondelete="SET NULL"), nullable=True
@@ -140,6 +135,7 @@ class SkillEvolution(Base):
     candidate_skill_id: Mapped[Optional[str]] = mapped_column(String(255), nullable=True, index=True)
     proposed_name: Mapped[str] = mapped_column(String(255), nullable=False, default="")
     proposed_desc: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    proposed_body: Mapped[str] = mapped_column(Text, nullable=False, default="")
     change_summary: Mapped[str] = mapped_column(Text, nullable=False, default="")
     content_diff: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     proposed_by: Mapped[str] = mapped_column(String(255), nullable=False, default="", index=True)

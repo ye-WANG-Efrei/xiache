@@ -22,7 +22,8 @@ CREATE TABLE IF NOT EXISTS api_keys (
 CREATE INDEX IF NOT EXISTS idx_api_keys_key_hash ON api_keys (key_hash);
 
 -- ---------------------------------------------------------------------------
--- Artifacts  (raw ZIP content — the "source of truth" for a skill version)
+-- Artifacts  (legacy staging table — kept for backward compatibility only)
+-- New records no longer require an artifact_id; body is stored directly in skill_records.
 -- ---------------------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS artifacts (
     id                   VARCHAR(36)  PRIMARY KEY,   -- UUID
@@ -36,13 +37,14 @@ CREATE TABLE IF NOT EXISTS artifacts (
 CREATE INDEX IF NOT EXISTS idx_artifacts_fingerprint ON artifacts (content_fingerprint);
 
 -- ---------------------------------------------------------------------------
--- Skill Records  (parsed metadata for a versioned, accepted skill)
+-- Skill Records  (versioned, accepted skills — body stored directly in DB)
 -- ---------------------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS skill_records (
     id                   VARCHAR(255) PRIMARY KEY,   -- human-readable skill_id
-    artifact_id          VARCHAR(36)  NOT NULL REFERENCES artifacts(id) ON DELETE RESTRICT,
+    artifact_id          VARCHAR(36)  REFERENCES artifacts(id) ON DELETE RESTRICT,  -- nullable: legacy only
     name                 VARCHAR(255) NOT NULL,
     description          TEXT         NOT NULL DEFAULT '',
+    body                 TEXT         NOT NULL DEFAULT '',
     version              VARCHAR(64)  NOT NULL DEFAULT '1.0.0',
     origin               VARCHAR(64)  NOT NULL,      -- imported | captured | derived | fixed
     visibility           VARCHAR(64)  NOT NULL DEFAULT 'public',
@@ -73,7 +75,7 @@ CREATE INDEX IF NOT EXISTS idx_skill_records_embedding
     WITH (lists = 100);
 
 CREATE INDEX IF NOT EXISTS idx_skill_records_fts
-    ON skill_records USING GIN(to_tsvector('english', name || ' ' || description));
+    ON skill_records USING GIN(to_tsvector('english', name || ' ' || description || ' ' || body));
 
 -- ---------------------------------------------------------------------------
 -- Skill Lineage  (DAG: which skill evolved from which)
@@ -92,13 +94,14 @@ CREATE INDEX IF NOT EXISTS idx_lineage_child  ON skill_lineage (child_id);
 -- ---------------------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS skill_evolutions (
     id                  VARCHAR(36)  PRIMARY KEY,        -- UUID
-    artifact_id         VARCHAR(36)  NOT NULL REFERENCES artifacts(id) ON DELETE RESTRICT,
+    artifact_id         VARCHAR(36)  REFERENCES artifacts(id) ON DELETE RESTRICT,  -- nullable: legacy only
     parent_skill_id     VARCHAR(255) REFERENCES skill_records(id) ON DELETE SET NULL,
     candidate_skill_id  VARCHAR(255),                   -- desired record_id on accept, e.g. "blink_led_v2"
     origin              VARCHAR(64)  NOT NULL,           -- fixed | derived | captured
     status              VARCHAR(32)  NOT NULL DEFAULT 'pending', -- pending | evaluating | accepted | rejected
     proposed_name       VARCHAR(255) NOT NULL DEFAULT '',
-    proposed_desc    TEXT         NOT NULL DEFAULT '',
+    proposed_desc       TEXT         NOT NULL DEFAULT '',
+    proposed_body       TEXT         NOT NULL DEFAULT '',
     change_summary   TEXT         NOT NULL DEFAULT '',
     content_diff     TEXT,
     proposed_by      VARCHAR(255) NOT NULL DEFAULT '',  -- agent:xxx or api-key owner

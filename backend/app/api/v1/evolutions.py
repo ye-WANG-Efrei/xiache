@@ -13,6 +13,7 @@ Manual overrides:
 """
 from __future__ import annotations
 
+import hashlib
 import uuid
 from datetime import datetime, timezone
 from typing import Optional
@@ -22,10 +23,9 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.v1.deps import require_auth
-from app.core import storage
 from app.core.config import get_settings
 from app.core.database import get_db
-from app.models.db import Artifact, SkillEvolution, SkillLineage, SkillRecord
+from app.models.db import SkillEvolution, SkillLineage, SkillRecord
 from app.schemas.api import (
     EvaluationResult,
     EvolutionResponse,
@@ -33,7 +33,6 @@ from app.schemas.api import (
 )
 from app.services import embedding as emb_service
 from app.services.evaluator import evaluate_evolution
-from app.services.skill_parser import parse_skill_md
 
 router = APIRouter(prefix="/evolutions", tags=["evolutions"])
 
@@ -89,66 +88,55 @@ def _rebuild_evaluation_from_evo(evo: SkillEvolution) -> Optional[EvaluationResu
 
 async def _create_skill_record_from_evolution(
     evo: SkillEvolution,
-    artifact: Artifact,
-    zip_bytes: bytes,
     owner: str,
     db: AsyncSession,
 ) -> SkillRecord:
-    """Create a SkillRecord from an evolution's artifact.
+    """Create a SkillRecord from an accepted evolution."""
+    merged_tags = list(dict.fromkeys((evo.tags or [])))
 
-    This mirrors the creation logic in records.py so both auto-accept and
-    manual accept paths share the same implementation.
-    """
-    skill_meta = parse_skill_md(zip_bytes)
-
-    merged_tags = list(dict.fromkeys(skill_meta["tags"] + (evo.tags or [])))
-
-    emb_text = emb_service.build_embedding_text(
-        skill_meta["name"] or evo.id,
-        skill_meta["description"],
-        merged_tags,
-    )
+    emb_text = emb_service.build_embedding_text(evo.proposed_name, evo.proposed_desc, merged_tags)
     embedding = await emb_service.generate_embedding(emb_text)
 
-    # Use candidate_skill_id if provided, otherwise fall back to evo:<uuid>
     record_id = evo.candidate_skill_id or f"evo:{evo.id}"
 
-    # Guard: must not overwrite an existing SkillRecord
-    collision = await db.execute(
+    collision = (await db.execute(
         select(SkillRecord).where(SkillRecord.id == record_id)
-    )
-    if collision.scalar_one_or_none() is not None:
+    )).scalar_one_or_none()
+    if collision is not None:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail=f"candidate_skill_id {record_id!r} already exists as a skill record.",
         )
 
+    fingerprint = hashlib.sha256(
+        f"{evo.proposed_name}\n{evo.proposed_desc}\n{evo.proposed_body}".encode()
+    ).hexdigest()
+
     record = SkillRecord(
         id=record_id,
-        artifact_id=evo.artifact_id,
-        name=skill_meta["name"] or evo.id,
-        description=skill_meta["description"],
-        version=skill_meta.get("version", "1.0.0"),
+        artifact_id=None,
+        name=evo.proposed_name,
+        description=evo.proposed_desc,
+        body=evo.proposed_body,
+        version="1.0.0",
         origin=evo.origin,
         visibility="public",
         level="tool_guide",
         tags=merged_tags,
-        input_schema=skill_meta.get("input_schema", {}),
-        output_schema=skill_meta.get("output_schema", {}),
+        input_schema={},
+        output_schema={},
         created_by=evo.proposed_by or owner,
         change_summary=evo.change_summary,
         content_diff=evo.content_diff,
-        content_fingerprint=artifact.content_fingerprint,
+        content_fingerprint=fingerprint,
         embedding=embedding,
         created_at=_utcnow(),
     )
     db.add(record)
     await db.flush()
 
-    # Lineage edge if there is a parent
     if evo.parent_skill_id:
-        lineage = SkillLineage(child_id=record_id, parent_id=evo.parent_skill_id)
-        db.add(lineage)
+        db.add(SkillLineage(child_id=record_id, parent_id=evo.parent_skill_id))
         await db.flush()
 
     return record
@@ -171,70 +159,40 @@ async def propose_evolution(
 ) -> EvolutionResponse:
     settings = get_settings()
 
-    # Load artifact
-    artifact_result = await db.execute(
-        select(Artifact).where(Artifact.id == body.artifact_id)
-    )
-    artifact: Optional[Artifact] = artifact_result.scalar_one_or_none()
-    if artifact is None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Artifact {body.artifact_id!r} not found. Stage it first.",
-        )
+    fingerprint = hashlib.sha256(
+        f"{body.name}\n{body.description}\n{body.body}".encode()
+    ).hexdigest()
 
-    # Load zip and parse SKILL.md
-    try:
-        zip_bytes = await storage.load_artifact(body.artifact_id)
-        artifact_accessible = True
-    except Exception:
-        zip_bytes = b""
-        artifact_accessible = False
-
-    skill_meta = parse_skill_md(zip_bytes) if artifact_accessible else {
-        "name": "", "description": "", "version": "0.0.0",
-        "tags": [], "input_schema": {}, "output_schema": {}, "body": "",
-    }
-
-    proposed_name = skill_meta["name"]
-    proposed_desc = skill_meta["description"]
-    skill_body    = skill_meta["body"]
-
-    # Pre-check 1: parent exists in DB (required when origin is derived/fixed)
+    # Pre-check 1: parent exists in DB
     if body.parent_skill_id:
-        parent_result = await db.execute(
+        parent_exists = (await db.execute(
             select(SkillRecord).where(SkillRecord.id == body.parent_skill_id)
-        )
-        parent_exists = parent_result.scalar_one_or_none() is not None
+        )).scalar_one_or_none() is not None
     else:
-        parent_exists = True  # captured origin — no parent needed
+        parent_exists = True
 
-    # Pre-check 2: duplicate detection via content fingerprint
-    dup_result = await db.execute(
-        select(SkillRecord).where(
-            SkillRecord.content_fingerprint == artifact.content_fingerprint
-        )
-    )
-    is_duplicate = dup_result.scalar_one_or_none() is not None
+    # Pre-check 2: duplicate detection
+    is_duplicate = (await db.execute(
+        select(SkillRecord).where(SkillRecord.content_fingerprint == fingerprint)
+    )).scalar_one_or_none() is not None
 
-    # Run evaluation
     eval_result: EvaluationResult = evaluate_evolution(
-        skill_name=proposed_name,
-        skill_description=proposed_desc,
-        skill_body=skill_body,
-        skill_version=skill_meta.get("version", ""),
-        skill_tags=skill_meta.get("tags", []),
+        skill_name=body.name,
+        skill_description=body.description,
+        skill_body=body.body,
+        skill_version="1.0.0",
+        skill_tags=body.tags,
         origin=body.origin,
         parent_skill_id=body.parent_skill_id,
         change_summary=body.change_summary,
         parent_exists=parent_exists,
-        artifact_accessible=artifact_accessible,
+        artifact_accessible=True,
         is_duplicate=is_duplicate,
     )
 
     now = _utcnow()
     evo_id = str(uuid.uuid4())
 
-    # Determine status after evaluation
     if eval_result.passed and eval_result.quality_score >= settings.AUTO_ACCEPT_THRESHOLD:
         evo_status = "accepted"
     elif eval_result.quality_score < 0.3:
@@ -244,13 +202,14 @@ async def propose_evolution(
 
     evo = SkillEvolution(
         id=evo_id,
-        artifact_id=body.artifact_id,
+        artifact_id=None,
         parent_skill_id=body.parent_skill_id,
         candidate_skill_id=body.candidate_skill_id,
         origin=body.origin,
-        status="evaluating",          # transient — updated below
-        proposed_name=proposed_name,
-        proposed_desc=proposed_desc,
+        status="evaluating",
+        proposed_name=body.name,
+        proposed_desc=body.description,
+        proposed_body=body.body,
         change_summary=body.change_summary,
         content_diff=body.content_diff,
         proposed_by=owner,
@@ -262,21 +221,11 @@ async def propose_evolution(
         auto_accepted=False,
     )
 
-    result_record_id: Optional[str] = None
-
     if evo_status == "accepted":
-        # Auto-accept: create SkillRecord
-        record = await _create_skill_record_from_evolution(
-            evo=evo,
-            artifact=artifact,
-            zip_bytes=zip_bytes,
-            owner=owner,
-            db=db,
-        )
+        record = await _create_skill_record_from_evolution(evo=evo, owner=owner, db=db)
         evo.status = "accepted"
         evo.result_record_id = record.id
         evo.auto_accepted = True
-        result_record_id = record.id
     else:
         evo.status = evo_status
 
@@ -384,26 +333,7 @@ async def accept_evolution(
             ),
         )
 
-    # Load artifact
-    artifact_result = await db.execute(
-        select(Artifact).where(Artifact.id == evo.artifact_id)
-    )
-    artifact: Optional[Artifact] = artifact_result.scalar_one_or_none()
-    if artifact is None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Artifact {evo.artifact_id!r} for evolution {evolution_id!r} not found.",
-        )
-
-    zip_bytes = await storage.load_artifact(evo.artifact_id)
-
-    record = await _create_skill_record_from_evolution(
-        evo=evo,
-        artifact=artifact,
-        zip_bytes=zip_bytes,
-        owner=owner,
-        db=db,
-    )
+    record = await _create_skill_record_from_evolution(evo=evo, owner=owner, db=db)
 
     evo.status = "accepted"
     evo.result_record_id = record.id

@@ -37,11 +37,11 @@ fts_candidates AS (
     SELECT
         id,
         ts_rank(
-            to_tsvector('english', name || ' ' || description),
+            to_tsvector('english', name || ' ' || description || ' ' || body || ' ' || (SELECT coalesce(string_agg(v,' '),'') FROM jsonb_array_elements_text(tags) t(v))),
             plainto_tsquery('english', :query)
         ) AS fts_score
     FROM skill_records
-    WHERE to_tsvector('english', name || ' ' || description)
+    WHERE to_tsvector('english', name || ' ' || description || ' ' || body || ' ' || (SELECT coalesce(string_agg(v,' '),'') FROM jsonb_array_elements_text(tags) t(v)))
           @@ plainto_tsquery('english', :query)
 )
 SELECT
@@ -77,11 +77,11 @@ SELECT
     created_by,
     created_at,
     ts_rank(
-        to_tsvector('english', name || ' ' || description),
+        to_tsvector('english', name || ' ' || description || ' ' || body || ' ' || (SELECT coalesce(string_agg(v,' '),'') FROM jsonb_array_elements_text(tags) t(v))),
         plainto_tsquery('english', :query)
     ) AS score
 FROM skill_records
-WHERE to_tsvector('english', name || ' ' || description)
+WHERE to_tsvector('english', name || ' ' || description || ' ' || body || ' ' || (SELECT coalesce(string_agg(v,' '),'') FROM jsonb_array_elements_text(tags) t(v)))
       @@ plainto_tsquery('english', :query)
 ORDER BY score DESC
 LIMIT :limit
