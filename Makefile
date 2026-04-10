@@ -25,6 +25,16 @@ boootstrap: bootstrap
 
 up:
 	$(COMPOSE) up -d --build
+	@LOCAL_IP=$$(hostname -I 2>/dev/null | awk '{print $$1}' || ipconfig 2>/dev/null | grep -m1 "IPv4" | awk '{print $$NF}'); \
+	FRONTEND_PORT=$${FRONTEND_PORT:-3000}; \
+	BACKEND_PORT=$${BACKEND_PORT:-8000}; \
+	POSTGRES_PORT=$${POSTGRES_PORT:-5432}; \
+	echo ""; \
+	echo "  Services running:"; \
+	echo "  Frontend   http://localhost:$$FRONTEND_PORT   http://$$LOCAL_IP:$$FRONTEND_PORT"; \
+	echo "  Backend    http://localhost:$$BACKEND_PORT    http://$$LOCAL_IP:$$BACKEND_PORT"; \
+	echo "  Postgres   localhost:$$POSTGRES_PORT          $$LOCAL_IP:$$POSTGRES_PORT"; \
+	echo ""
 
 down:
 	$(COMPOSE) down
