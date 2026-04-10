@@ -18,7 +18,9 @@ bootstrap:
 	fi
 	$(COMPOSE) up -d --build
 	$(MAKE) init-db
-	@echo "[bootstrap] done. frontend=http://localhost:3000 backend=http://localhost:8000"
+	@FE=$$($(COMPOSE) port frontend 3000 2>/dev/null | sed 's/.*://'); \
+	BE=$$($(COMPOSE) port backend 8000 2>/dev/null | sed 's/.*://'); \
+	echo "[bootstrap] done. frontend=http://localhost:$$FE backend=http://localhost:$$BE"
 
 # Backward-compatible alias for common typo.
 boootstrap: bootstrap
@@ -26,14 +28,14 @@ boootstrap: bootstrap
 up:
 	$(COMPOSE) up -d --build
 	@LOCAL_IP=$$(hostname -I 2>/dev/null | awk '{print $$1}' || ipconfig 2>/dev/null | grep -m1 "IPv4" | awk '{print $$NF}'); \
-	FRONTEND_PORT=$${FRONTEND_PORT:-3000}; \
-	BACKEND_PORT=$${BACKEND_PORT:-8000}; \
-	POSTGRES_PORT=$${POSTGRES_PORT:-5432}; \
+	FE=$$($(COMPOSE) port frontend 3000 2>/dev/null | sed 's/.*://'); \
+	BE=$$($(COMPOSE) port backend 8000 2>/dev/null | sed 's/.*://'); \
+	PG=$$($(COMPOSE) port postgres 5432 2>/dev/null | sed 's/.*://'); \
 	echo ""; \
 	echo "  Services running:"; \
-	echo "  Frontend   http://localhost:$$FRONTEND_PORT   http://$$LOCAL_IP:$$FRONTEND_PORT"; \
-	echo "  Backend    http://localhost:$$BACKEND_PORT    http://$$LOCAL_IP:$$BACKEND_PORT"; \
-	echo "  Postgres   localhost:$$POSTGRES_PORT          $$LOCAL_IP:$$POSTGRES_PORT"; \
+	echo "  Frontend   http://localhost:$$FE   http://$$LOCAL_IP:$$FE"; \
+	echo "  Backend    http://localhost:$$BE    http://$$LOCAL_IP:$$BE"; \
+	echo "  Postgres   localhost:$$PG           $$LOCAL_IP:$$PG"; \
 	echo ""
 
 down:
