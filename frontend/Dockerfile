@@ -15,7 +15,7 @@ COPY . .
 RUN mkdir -p public
 
 # Build-time env (can be overridden by passing --build-arg or env in compose)
-ARG NEXT_PUBLIC_API_URL=http://localhost:8000
+ARG NEXT_PUBLIC_API_URL=
 ARG NEXT_PUBLIC_API_KEY=dev-key-for-testing
 ENV NEXT_PUBLIC_API_URL=$NEXT_PUBLIC_API_URL
 ENV NEXT_PUBLIC_API_KEY=$NEXT_PUBLIC_API_KEY
