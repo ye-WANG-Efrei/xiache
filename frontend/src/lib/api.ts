@@ -4,38 +4,38 @@ import axios, { AxiosInstance, AxiosRequestConfig } from "axios";
 // Types (mirrors backend schemas/api.py)
 // ---------------------------------------------------------------------------
 
-export interface ArtifactStats {
-  file_count: number;
-  total_size: number;
-}
-
-export interface StageArtifactResponse {
-  artifact_id: string;
-  stats: ArtifactStats;
-}
-
 export interface CreateRecordRequest {
-  record_id: string;
-  artifact_id: string;
+  record_id?: string;       // optional slug; auto-generated from name if omitted
+  name: string;
+  description?: string;
+  body?: string;
   origin: string;
   visibility?: string;
   parent_skill_ids?: string[];
   tags?: string[];
   level?: string;
+  version?: string;
+  input_schema?: Record<string, unknown>;
+  output_schema?: Record<string, unknown>;
   created_by?: string;
   change_summary?: string;
   content_diff?: string;
 }
 
 export interface RecordResponse {
-  record_id: string;
-  artifact_id: string;
+  id: string;               // UUID — true primary key
+  artifact_id: string | null;
+  artifact_ref: string;
   name: string;
   description: string;
+  body: string;
+  version: string;
   origin: string;
   visibility: string;
   level: string;
   tags: string[];
+  input_schema: Record<string, unknown>;
+  output_schema: Record<string, unknown>;
   created_by: string;
   change_summary: string;
   content_diff: string | null;
@@ -62,7 +62,7 @@ export interface HealthResponse {
 }
 
 export interface SearchResult {
-  record_id: string;
+  id: string;
   name: string;
   description: string;
   origin: string;
@@ -86,8 +86,11 @@ export interface SearchResponse {
 // ---------------------------------------------------------------------------
 
 export interface ProposeEvolutionRequest {
-  artifact_id: string;
-  parent_skill_id?: string | null;
+  name: string;
+  description?: string;
+  body?: string;
+  parent_skill_id?: string | null;  // slug of parent skill
+  candidate_skill_id?: string | null;
   origin: string; // fixed | derived | captured
   change_summary?: string;
   content_diff?: string | null;
@@ -150,24 +153,10 @@ export class XiacheClient {
     return data;
   }
 
-  // Stage artifact (multipart)
-  async stageArtifact(files: File[]): Promise<StageArtifactResponse> {
-    const form = new FormData();
-    for (const f of files) {
-      form.append("files", f, f.name);
-    }
-    const { data } = await this.http.post<StageArtifactResponse>(
-      "/api/v1/artifacts/stage",
-      form,
-      { headers: { "Content-Type": "multipart/form-data" } }
-    );
-    return data;
-  }
-
   // Create record
   async createRecord(body: CreateRecordRequest): Promise<RecordResponse> {
     const { data } = await this.http.post<RecordResponse>(
-      "/api/v1/records",
+      "/api/v1/skills",
       body
     );
     return data;
@@ -179,7 +168,7 @@ export class XiacheClient {
     includeEmbedding = false
   ): Promise<RecordResponse> {
     const { data } = await this.http.get<RecordResponse>(
-      `/api/v1/records/${encodeURIComponent(recordId)}`,
+      `/api/v1/skills/${encodeURIComponent(recordId)}`,
       { params: { include_embedding: includeEmbedding } }
     );
     return data;
@@ -199,7 +188,7 @@ export class XiacheClient {
     if (opts?.visibility) params.visibility = opts.visibility;
 
     const { data } = await this.http.get<RecordMetadataResponse>(
-      "/api/v1/records/metadata",
+      "/api/v1/skills/metadata",
       { params }
     );
     return data;
@@ -208,7 +197,7 @@ export class XiacheClient {
   // Download record as ZIP blob URL
   async downloadRecordUrl(recordId: string): Promise<string> {
     const { data } = await this.http.get(
-      `/api/v1/records/${encodeURIComponent(recordId)}/download`,
+      `/api/v1/skills/${encodeURIComponent(recordId)}/download`,
       { responseType: "blob" }
     );
     return URL.createObjectURL(data as Blob);

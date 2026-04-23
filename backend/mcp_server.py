@@ -155,12 +155,12 @@ async def tool_search_skills(
 async def tool_get_skill(skill_id: str) -> CallToolResult:
     """Get the full content of a skill: metadata + SKILL.md text."""
     try:
-        meta = await _get(f"/api/v1/records/{skill_id}")
+        meta = await _get(f"/api/v1/skills/{skill_id}")
         # Try to download and extract SKILL.md text
         skill_text = None
         yaml_text = None
         try:
-            zip_bytes = await _download_bytes(f"/api/v1/records/{skill_id}/download")
+            zip_bytes = await _download_bytes(f"/api/v1/skills/{skill_id}/download")
             with zipfile.ZipFile(io.BytesIO(zip_bytes)) as zf:
                 for name in zf.namelist():
                     if name.endswith("SKILL.md"):
@@ -203,7 +203,7 @@ async def tool_execute_task(
     try:
         # Step 1: find the skill
         if skill_id:
-            skill_data = await _get(f"/api/v1/records/{skill_id}")
+            skill_data = await _get(f"/api/v1/skills/{skill_id}")
         else:
             search = await _get("/api/v1/search", {"q": task, "limit": 1})
             results = search.get("results", [])
@@ -216,13 +216,13 @@ async def tool_execute_task(
                     ),
                     "task": task,
                 })
-            skill_data = await _get(f"/api/v1/records/{results[0]['record_id']}")
+            skill_data = await _get(f"/api/v1/skills/{results[0]['record_id']}")
             skill_id = skill_data["record_id"]
 
         # Step 2: get skill content
         skill_text = ""
         try:
-            zip_bytes = await _download_bytes(f"/api/v1/records/{skill_id}/download")
+            zip_bytes = await _download_bytes(f"/api/v1/skills/{skill_id}/download")
             with zipfile.ZipFile(io.BytesIO(zip_bytes)) as zf:
                 for name in zf.namelist():
                     if name.endswith("SKILL.md"):
@@ -274,17 +274,10 @@ async def tool_submit_skill_revision(
     it is published immediately, otherwise it enters review queue.
     """
     try:
-        files: dict[str, str] = {"SKILL.md": skill_md}
-        if skill_yaml:
-            files["skill.yaml"] = skill_yaml
-
-        # Stage files
-        stage = await _post_multipart("/api/v1/artifacts/stage", files)
-        artifact_id = stage["artifact_id"]
-
-        # Submit evolution
         evo = await _post("/api/v1/evolutions", {
-            "artifact_id": artifact_id,
+            "name": skill_id,
+            "description": rationale[:200] if rationale else "",
+            "body": skill_md,
             "parent_skill_id": skill_id,
             "origin": "fixed",
             "change_summary": rationale,
@@ -320,25 +313,10 @@ async def tool_publish_skill(
     The platform evaluates, and if it passes, publishes immediately.
     """
     try:
-        # Build SKILL.md
-        tag_str = json.dumps(tags or [])
-        skill_md = f"""---
-name: {name}
-description: {description}
-tags: {tag_str}
----
-
-{body}
-"""
-        files: dict[str, str] = {"SKILL.md": skill_md}
-        if skill_yaml:
-            files["skill.yaml"] = skill_yaml
-
-        stage = await _post_multipart("/api/v1/artifacts/stage", files)
-        artifact_id = stage["artifact_id"]
-
         evo = await _post("/api/v1/evolutions", {
-            "artifact_id": artifact_id,
+            "name": name,
+            "description": description,
+            "body": body,
             "origin": "captured",
             "tags": tags or [],
         })
@@ -363,7 +341,7 @@ tags: {tag_str}
 async def tool_get_skill_lineage(skill_id: str) -> CallToolResult:
     """Get ancestry and evolution history of a skill."""
     try:
-        meta = await _get(f"/api/v1/records/{skill_id}")
+        meta = await _get(f"/api/v1/skills/{skill_id}")
         evolutions = await _get("/api/v1/evolutions", {
             "parent_skill_id": skill_id,
             "limit": 50,
