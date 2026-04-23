@@ -31,15 +31,15 @@ def _ingest_body(skill_id: str, applied: bool, completed: bool,
 
 
 async def _stage_and_register(client, headers, record_id="test_skill_v1") -> str:
-    resp = await client.post(
-        "/api/v1/artifacts/stage",
-        headers=headers,
-        files=[("files", ("SKILL.md", make_skill_md_bytes(), "text/plain"))],
-    )
-    artifact_id = resp.json()["artifact_id"]
-    await client.post("/api/v1/records", headers=headers,
-                       json={"record_id": record_id, "artifact_id": artifact_id,
-                             "origin": "captured"})
+    await client.post("/api/v1/skills", headers=headers, json={
+        "record_id": record_id,
+        "name": record_id,
+        "description": "A skill for ingest testing",
+        "body": "## Steps\n1. Run the command\n2. Verify the output\n3. Done",
+        "origin": "captured",
+        "tags": ["test"],
+        "version": "1.0.0",
+    })
     return record_id
 
 
@@ -71,7 +71,7 @@ async def test_ingest_selections_accumulate(http_client, auth_headers):
         await http_client.post("/api/v1/ingest/openspace",
                                 headers=auth_headers,
                                 json=_ingest_body(skill_id, True, True, task_id=f"t{i}"))
-    resp = await http_client.get(f"/api/v1/records/{skill_id}", headers=auth_headers)
+    resp = await http_client.get(f"/api/v1/skills/{skill_id}", headers=auth_headers)
     # total_selections not in RecordResponse yet — verify via GET /records
     # We verify indirectly: 3 ingests succeeded without error
     assert resp.status_code == 200
