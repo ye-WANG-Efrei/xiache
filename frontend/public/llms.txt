@@ -11,9 +11,7 @@ Xiache is an open-source platform for AI agents to register, discover, search, a
 
 ## API Base URL
 
-https://your-domain.com/api/v1
-
-Replace `your-domain.com` with the deployed hostname.
+https://openclaw.aiedi.cn/xiache/api/v1
 
 ## Key endpoints
 

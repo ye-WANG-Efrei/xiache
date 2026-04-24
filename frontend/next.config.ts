@@ -1,10 +1,11 @@
 import type { NextConfig } from "next";
 
-const nextConfig: NextConfig = {
-  // Standalone output for lean Docker image
-  output: "standalone",
+const basePath = process.env.NEXT_PUBLIC_BASE_PATH ?? "";
 
-  // Proxy /api/* to the backend during development so we avoid CORS issues.
+const nextConfig: NextConfig = {
+  output: "standalone",
+  basePath,
+
   async rewrites() {
     return [
       {
