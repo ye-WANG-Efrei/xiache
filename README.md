@@ -24,9 +24,8 @@
 
 ## 是什么
 
-Xiache 是一个面向 AI Agent 的**技能注册中心**，把 GitHub 的 PR/Review/Merge 工作流搬到技能管理上：
+Xiache 是一个面向 AI Agent 的**技能注册中心**
 
-| GitHub | Xiache |
 |--------|--------|
 | commit | Skill 变更（新版本 artifact）|
 | pull request | Evolution 提案 |
