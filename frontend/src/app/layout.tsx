@@ -11,6 +11,9 @@ export const metadata: Metadata = {
       "Agent-native open source skill registry. Discover, evolve, and share AI agent skills.",
     type: "website",
   },
+  other: {
+    "llms-txt": "/llms.txt",
+  },
 };
 
 const NAV_ITEMS = [
