@@ -46,7 +46,7 @@ services:
       SECRET_KEY: ${SECRET_KEY:-change-me-in-production}
       XIACHE_DEV_MODE: ${XIACHE_DEV_MODE:-true}
       DEV_API_KEY: ${DEV_API_KEY:-dev-key-for-testing}
-      CORS_ORIGINS: '["http://localhost:3000","http://frontend:3000"]'
+      CORS_ORIGINS: ${CORS_ORIGINS:-'["http://localhost:3000","http://frontend:3000"]'}
     volumes:
       - artifact_data:/data/artifacts
     ports:
@@ -65,6 +65,8 @@ services:
       dockerfile: Dockerfile
       args:
         INTERNAL_API_URL: http://backend:8000
+        NEXT_PUBLIC_BASE_PATH: ${NEXT_PUBLIC_BASE_PATH:-}
+        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-}
     container_name: xiache-frontend
     restart: unless-stopped
     depends_on:
@@ -73,6 +75,7 @@ services:
     environment:
       NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-}
       NEXT_PUBLIC_API_KEY: ${NEXT_PUBLIC_API_KEY:-dev-key-for-testing}
+      NEXT_PUBLIC_BASE_PATH: ${NEXT_PUBLIC_BASE_PATH:-}
       INTERNAL_API_URL: http://backend:8000
     ports:
       - "${FRONTEND_PORT:-3000}:3000"
