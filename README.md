@@ -26,12 +26,6 @@
 
 Xiache 是一个面向 AI Agent 的**技能注册中心**
 
-|--------|--------|
-| commit | Skill 变更（新版本 artifact）|
-| pull request | Evolution 提案 |
-| code review | 自动 Evaluator（11项检查）|
-| merge | accepted SkillRecord |
-| branch lineage | parent_skill_id 血缘链 |
 
 每个 Skill 以 `name + description + body` 直接存入数据库，支持语义向量检索、版本血缘追溯和自动进化。
 
