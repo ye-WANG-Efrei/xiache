@@ -26,11 +26,10 @@ async def generate_embedding(text: str) -> Optional[list[float]]:
             api_key=settings.EMBEDDING_API_KEY,
             base_url=settings.EMBEDDING_API_BASE,  # None → default OpenAI endpoint
         )
-        response = await client.embeddings.create(
-            input=text,
-            model=settings.EMBEDDING_MODEL,
-            dimensions=settings.EMBEDDING_DIMENSIONS,
-        )
+        kwargs: dict = {"input": text, "model": settings.EMBEDDING_MODEL}
+        if settings.EMBEDDING_API_BASE and "bigmodel" not in settings.EMBEDDING_API_BASE:
+            kwargs["dimensions"] = settings.EMBEDDING_DIMENSIONS
+        response = await client.embeddings.create(**kwargs)
         return response.data[0].embedding
     except Exception as exc:
         logger.warning("Embedding generation failed: %s", exc)

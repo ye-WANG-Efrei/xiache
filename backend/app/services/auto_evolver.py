@@ -97,7 +97,7 @@ async def maybe_evolve(
     # Guard: skip if there is already a pending/evaluating evolution for this skill
     pending_check = await db.execute(
         select(SkillEvolution).where(
-            SkillEvolution.parent_skill_id == skill.id,
+            SkillEvolution.parent_skill_id == skill.slug,
             SkillEvolution.status.in_(["pending", "evaluating"]),
         )
     )
@@ -131,7 +131,7 @@ async def maybe_evolve(
         return None
 
     new_version = _bump_patch(skill.version)
-    candidate_id = f"{skill.id}_auto_{new_version.replace('.', '_')}"
+    candidate_id = f"{skill.slug}_auto_{new_version.replace('.', '_')}"
 
     safe_summary_notes = _sanitize_notes(failure_notes[:3])
     change_summary = (
@@ -141,8 +141,7 @@ async def maybe_evolve(
 
     evo = SkillEvolution(
         id=str(uuid.uuid4()),
-        artifact_id=None,
-        parent_skill_id=skill.id,
+        parent_skill_id=skill.slug,
         candidate_skill_id=candidate_id,
         origin="fixed",
         status="pending",

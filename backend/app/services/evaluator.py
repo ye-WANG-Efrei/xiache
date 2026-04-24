@@ -49,9 +49,8 @@ def evaluate_evolution(
     origin: str,
     parent_skill_id: Optional[str],
     change_summary: str,
-    # --- pre-computed by caller (async DB / storage checks) ---
+    # --- pre-computed by caller (async DB checks) ---
     parent_exists: bool,       # True if parent_skill_id is None OR parent found in DB
-    artifact_accessible: bool, # True if zip was loaded successfully
     is_duplicate: bool,        # True if content fingerprint already in skill_records
 ) -> EvaluationResult:
     """Run all quality checks and return a structured EvaluationResult."""
@@ -164,16 +163,7 @@ def evaluate_evolution(
         )
 
     # ------------------------------------------------------------------
-    # 10. artifact_accessible — zip must be readable from storage
-    # ------------------------------------------------------------------
-    checks["artifact_accessible"] = artifact_accessible
-    if not artifact_accessible:
-        failure_reasons.append(
-            "artifact_accessible: artifact could not be loaded from storage."
-        )
-
-    # ------------------------------------------------------------------
-    # 11. no_dangerous_patterns — block destructive code (case-insensitive)
+    # 10. no_dangerous_patterns — block destructive code (case-insensitive)
     # ------------------------------------------------------------------
     skill_body_lower = skill_body.lower()
     dangerous_found = [p for p in _DANGEROUS_PATTERNS if p in skill_body_lower]
@@ -195,7 +185,6 @@ def evaluate_evolution(
     hard_fail = (
         not checks["has_name"]
         or not checks["no_dangerous_patterns"]
-        or not checks["artifact_accessible"]
         or is_duplicate
         or not checks["version_valid"]
         or not parent_exists

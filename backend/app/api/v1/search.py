@@ -11,6 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.api.v1.deps import require_auth
 from app.core.database import get_db
 from app.schemas.api import SearchResponse, SearchResult
+from app.services import category as cat_service
 from app.services import embedding as emb_service
 
 logger = logging.getLogger(__name__)
@@ -21,41 +22,36 @@ router = APIRouter(prefix="/search", tags=["search"])
 # SQL templates
 # ---------------------------------------------------------------------------
 
-# Hybrid: pgvector cosine similarity + PostgreSQL full-text search.
-# Both scores are in [0, 1]; combined with configurable weights.
-_SQL_HYBRID = text("""
+def _sql_hybrid_scoped(vec_literal: str) -> text:
+    return text(f"""
 WITH vec_candidates AS (
     SELECT
         id,
-        1 - (embedding <=> :embedding::vector) AS vec_score
+        1 - (embedding <=> '{vec_literal}'::vector) AS vec_score
     FROM skill_records
     WHERE embedding IS NOT NULL
-    ORDER BY embedding <=> :embedding::vector
+      AND category = :category
+    ORDER BY embedding <=> '{vec_literal}'::vector
     LIMIT :pool
 ),
 fts_candidates AS (
     SELECT
         id,
         ts_rank(
-            to_tsvector('english', name || ' ' || description || ' ' || body || ' ' || (SELECT coalesce(string_agg(v,' '),'') FROM jsonb_array_elements_text(tags) t(v))),
+            to_tsvector('english', name || ' ' || description || ' ' || body
+                || ' ' || (SELECT coalesce(string_agg(v,' '),'') FROM jsonb_array_elements_text(tags) t(v))),
             plainto_tsquery('english', :query)
         ) AS fts_score
     FROM skill_records
-    WHERE to_tsvector('english', name || ' ' || description || ' ' || body || ' ' || (SELECT coalesce(string_agg(v,' '),'') FROM jsonb_array_elements_text(tags) t(v)))
+    WHERE category = :category
+      AND to_tsvector('english', name || ' ' || description || ' ' || body
+          || ' ' || (SELECT coalesce(string_agg(v,' '),'') FROM jsonb_array_elements_text(tags) t(v)))
           @@ plainto_tsquery('english', :query)
 )
 SELECT
-    r.id          AS record_id,
-    r.name,
-    r.description,
-    r.origin,
-    r.visibility,
-    r.level,
-    r.tags,
-    r.created_by,
-    r.created_at,
-    COALESCE(v.vec_score, 0) * 0.6
-        + COALESCE(f.fts_score, 0) * 0.4  AS score
+    r.id, r.name, r.description, r.origin, r.visibility, r.level,
+    r.tags, r.created_by, r.created_at, r.category,
+    COALESCE(v.vec_score, 0) * 0.6 + COALESCE(f.fts_score, 0) * 0.4 AS score
 FROM skill_records r
 LEFT JOIN vec_candidates v ON r.id = v.id
 LEFT JOIN fts_candidates f ON r.id = f.id
@@ -64,24 +60,56 @@ ORDER BY score DESC
 LIMIT :limit
 """)
 
-# Fallback: full-text search only (when embedding service is not configured).
+
+def _sql_hybrid_global(vec_literal: str) -> text:
+    return text(f"""
+WITH vec_candidates AS (
+    SELECT
+        id,
+        1 - (embedding <=> '{vec_literal}'::vector) AS vec_score
+    FROM skill_records
+    WHERE embedding IS NOT NULL
+    ORDER BY embedding <=> '{vec_literal}'::vector
+    LIMIT :pool
+),
+fts_candidates AS (
+    SELECT
+        id,
+        ts_rank(
+            to_tsvector('english', name || ' ' || description || ' ' || body
+                || ' ' || (SELECT coalesce(string_agg(v,' '),'') FROM jsonb_array_elements_text(tags) t(v))),
+            plainto_tsquery('english', :query)
+        ) AS fts_score
+    FROM skill_records
+    WHERE to_tsvector('english', name || ' ' || description || ' ' || body
+          || ' ' || (SELECT coalesce(string_agg(v,' '),'') FROM jsonb_array_elements_text(tags) t(v)))
+          @@ plainto_tsquery('english', :query)
+)
+SELECT
+    r.id, r.name, r.description, r.origin, r.visibility, r.level,
+    r.tags, r.created_by, r.created_at, r.category,
+    COALESCE(v.vec_score, 0) * 0.6 + COALESCE(f.fts_score, 0) * 0.4 AS score
+FROM skill_records r
+LEFT JOIN vec_candidates v ON r.id = v.id
+LEFT JOIN fts_candidates f ON r.id = f.id
+WHERE v.id IS NOT NULL OR f.id IS NOT NULL
+ORDER BY score DESC
+LIMIT :limit
+""")
+
+# FTS-only fallback (no embedding service configured).
 _SQL_FTS = text("""
 SELECT
-    id          AS record_id,
-    name,
-    description,
-    origin,
-    visibility,
-    level,
-    tags,
-    created_by,
-    created_at,
+    id, name, description, origin, visibility, level,
+    tags, created_by, created_at, category,
     ts_rank(
-        to_tsvector('english', name || ' ' || description || ' ' || body || ' ' || (SELECT coalesce(string_agg(v,' '),'') FROM jsonb_array_elements_text(tags) t(v))),
+        to_tsvector('english', name || ' ' || description || ' ' || body
+            || ' ' || (SELECT coalesce(string_agg(v,' '),'') FROM jsonb_array_elements_text(tags) t(v))),
         plainto_tsquery('english', :query)
     ) AS score
 FROM skill_records
-WHERE to_tsvector('english', name || ' ' || description || ' ' || body || ' ' || (SELECT coalesce(string_agg(v,' '),'') FROM jsonb_array_elements_text(tags) t(v)))
+WHERE to_tsvector('english', name || ' ' || description || ' ' || body
+      || ' ' || (SELECT coalesce(string_agg(v,' '),'') FROM jsonb_array_elements_text(tags) t(v)))
       @@ plainto_tsquery('english', :query)
 ORDER BY score DESC
 LIMIT :limit
@@ -89,17 +117,16 @@ LIMIT :limit
 
 
 # ---------------------------------------------------------------------------
-# Helper
+# Helpers
 # ---------------------------------------------------------------------------
 
 def _vec_to_pg(embedding: list[float]) -> str:
-    """Convert a Python float list to PostgreSQL vector literal '[x,y,…]'."""
     return "[" + ",".join(f"{v:.8f}" for v in embedding) + "]"
 
 
 def _row_to_result(row: dict) -> SearchResult:
     return SearchResult(
-        record_id=row["record_id"],
+        id=row["id"],
         name=row["name"],
         description=row["description"] or "",
         origin=row["origin"],
@@ -109,6 +136,7 @@ def _row_to_result(row: dict) -> SearchResult:
         created_by=row["created_by"] or "",
         created_at=row["created_at"],
         score=float(row["score"]),
+        category=row.get("category"),
     )
 
 
@@ -116,54 +144,65 @@ def _row_to_result(row: dict) -> SearchResult:
 # Endpoint
 # ---------------------------------------------------------------------------
 
-@router.get("", response_model=SearchResponse, summary="Search skills")
+@router.get("", response_model=SearchResponse, summary="Search skills with semantic category routing")
 async def search_skills(
-    q: str = Query(..., min_length=1, max_length=500, description="Natural-language search query"),
+    q: str = Query(..., min_length=1, max_length=500, description="Natural-language query"),
     limit: int = Query(default=20, ge=1, le=100),
     owner: str = Depends(require_auth),
     db: AsyncSession = Depends(get_db),
 ) -> SearchResponse:
-    """
-    Hybrid semantic + full-text search over all skills.
+    """Two-stage semantic search.
 
-    - When an embedding service is configured: uses **pgvector cosine similarity**
-      (0.6 weight) + **PostgreSQL FTS ts_rank** (0.4 weight).
-    - When no embedding service: falls back to **full-text search only**.
+    Stage 1 — Category routing: embed the query and find the nearest category
+    prototype via cosine similarity.  No string matching required from the caller.
 
-    Results are sorted by combined score (highest first).
+    Stage 2 — Skill retrieval: hybrid vector + full-text search within the
+    detected category.
+
+    Falls back to global search when no category prototypes exist yet, or to
+    full-text-only when no embedding service is configured.
     """
     query = q.strip()
+    detected_category: Optional[str] = None
+    search_type: str = "fulltext"
 
     # Try to generate query embedding
     query_embedding: Optional[list[float]] = None
     try:
         query_embedding = await emb_service.generate_embedding(query)
     except Exception as exc:
-        logger.warning("Embedding generation failed, falling back to FTS: %s", exc)
+        logger.warning("embedding failed, falling back to FTS: %s", exc)
 
     if query_embedding:
-        result = await db.execute(
-            _SQL_HYBRID,
-            {
-                "query": query,
-                "embedding": _vec_to_pg(query_embedding),
-                "pool": limit * 5,   # pull 5× more candidates for reranking
-                "limit": limit,
-            },
-        )
-        search_type = "hybrid"
+        # Stage 1: semantic category routing
+        detected_category = await cat_service.detect_category(query_embedding, db)
+        logger.info("query=%r → detected_category=%r", query, detected_category)
+
+        vec_pg = _vec_to_pg(query_embedding)
+
+        if detected_category:
+            result = await db.execute(
+                _sql_hybrid_scoped(vec_pg),
+                {"query": query, "category": detected_category, "pool": limit * 5, "limit": limit},
+            )
+            search_type = "hybrid_scoped"
+        else:
+            # No prototypes yet — global hybrid search
+            result = await db.execute(
+                _sql_hybrid_global(vec_pg),
+                {"query": query, "pool": limit * 5, "limit": limit},
+            )
+            search_type = "hybrid"
     else:
-        result = await db.execute(
-            _SQL_FTS,
-            {"query": query, "limit": limit},
-        )
-        search_type = "fulltext"
+        # No embedding service — plain FTS, no category routing possible
+        result = await db.execute(_SQL_FTS, {"query": query, "limit": limit})
 
     rows = result.mappings().all()
     results = [_row_to_result(dict(row)) for row in rows]
 
     logger.info(
-        "search q=%r type=%s results=%d", query, search_type, len(results)
+        "search q=%r type=%s category=%r results=%d",
+        query, search_type, detected_category, len(results),
     )
 
     return SearchResponse(
@@ -171,4 +210,5 @@ async def search_skills(
         results=results,
         count=len(results),
         search_type=search_type,
+        detected_category=detected_category,
     )

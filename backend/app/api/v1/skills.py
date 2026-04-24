@@ -23,6 +23,7 @@ from app.schemas.api import (
     RecordMetadataResponse,
     RecordResponse,
 )
+from app.services import category as cat_service
 from app.services import embedding as emb_service
 
 logger = logging.getLogger(__name__)
@@ -90,6 +91,7 @@ def _record_to_response(
         content_fingerprint=record.content_fingerprint,
         parent_skill_ids=parent_slugs,
         created_at=record.created_at,
+        category=record.category,
         embedding=embedding_out,
     )
 
@@ -172,6 +174,7 @@ async def create_skill(
         content_diff=body.content_diff,
         content_fingerprint=fingerprint,
         embedding=embedding,
+        category=body.category,
         created_at=datetime.now(timezone.utc),
     )
     db.add(record)
@@ -179,6 +182,13 @@ async def create_skill(
 
     for parent_slug in body.parent_skill_ids:
         db.add(SkillLineage(child_slug=slug, parent_slug=parent_slug))
+
+    # Update category centroid whenever we have both a category and an embedding
+    if body.category and embedding:
+        try:
+            await cat_service.upsert_prototype(body.category, embedding, db)
+        except Exception as exc:
+            logger.warning("category prototype update failed: %s", exc)
 
     await db.flush()
     return _record_to_response(record, list(body.parent_skill_ids))
@@ -261,6 +271,7 @@ async def list_skills_metadata(
                 content_fingerprint=rec.content_fingerprint,
                 parent_skill_ids=parents_map.get(rec.slug, []),
                 created_at=rec.created_at,
+                category=rec.category,
                 embedding=emb_out,
             )
         )
