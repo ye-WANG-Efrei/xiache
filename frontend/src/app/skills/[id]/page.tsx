@@ -32,33 +32,30 @@ import { clsx } from "clsx";
 
 const BADGE: Record<string, Record<string, { text: string; border: string; bg: string }>> = {
   level: {
-    workflow:   { text: "text-cyber-cyan",   border: "border-cyber-cyan",   bg: "bg-cyber-cyan-dim" },
-    tool_guide: { text: "text-cyber-yellow", border: "border-cyber-yellow", bg: "bg-cyber-yellow-dim" },
-    reference:  { text: "text-cyber-muted",  border: "border-cyber-border", bg: "bg-cyber-card" },
+    workflow:   { text: "text-sky-700",    border: "border-sky-200",    bg: "bg-sky-50" },
+    tool_guide: { text: "text-amber-700",  border: "border-amber-200",  bg: "bg-amber-50" },
+    reference:  { text: "text-stone-600",  border: "border-stone-200",  bg: "bg-stone-100" },
   },
   origin: {
-    imported: { text: "text-cyber-green",  border: "border-cyber-green border-opacity-40",  bg: "bg-cyber-green bg-opacity-10" },
-    captured: { text: "text-cyber-yellow", border: "border-cyber-yellow border-opacity-40", bg: "bg-cyber-yellow-dim" },
-    derived:  { text: "text-cyber-orange", border: "border-cyber-orange border-opacity-40", bg: "bg-cyber-orange bg-opacity-10" },
-    fixed:    { text: "text-cyber-pink",   border: "border-cyber-pink border-opacity-40",   bg: "bg-cyber-pink-dim" },
+    imported: { text: "text-emerald-700", border: "border-emerald-200", bg: "bg-emerald-50" },
+    captured: { text: "text-amber-700",   border: "border-amber-200",   bg: "bg-amber-50" },
+    derived:  { text: "text-orange-700",  border: "border-orange-200",  bg: "bg-orange-50" },
+    fixed:    { text: "text-red-700",     border: "border-red-200",     bg: "bg-red-50" },
   },
   visibility: {
-    public:     { text: "text-cyber-green",  border: "border-cyber-green border-opacity-40",  bg: "bg-cyber-green bg-opacity-10" },
-    group_only: { text: "text-cyber-pink",   border: "border-cyber-pink border-opacity-40",   bg: "bg-cyber-pink-dim" },
+    public:     { text: "text-emerald-700", border: "border-emerald-200", bg: "bg-emerald-50" },
+    group_only: { text: "text-stone-600",   border: "border-stone-200",   bg: "bg-stone-100" },
   },
 };
 
 function CyberBadge({ type, value }: { type: "level" | "origin" | "visibility"; value: string }) {
-  const s = BADGE[type]?.[value] ?? { text: "text-cyber-muted", border: "border-cyber-border", bg: "bg-cyber-card" };
+  const s = BADGE[type]?.[value] ?? { text: "text-stone-600", border: "border-stone-200", bg: "bg-stone-100" };
   return (
-    <span
-      className={clsx(
-        "inline-flex items-center px-2.5 py-0.5 text-xs font-mono font-medium tracking-wider border",
-        s.text, s.border, s.bg
-      )}
-      style={{ clipPath: "polygon(5px 0,100% 0,100% calc(100% - 5px),calc(100% - 5px) 100%,0 100%,0 5px)" }}
-    >
-      {value.toUpperCase()}
+    <span className={clsx(
+      "inline-flex items-center px-2.5 py-0.5 text-xs font-medium rounded border",
+      s.text, s.border, s.bg
+    )}>
+      {value}
     </span>
   );
 }
@@ -84,20 +81,16 @@ function TabBar({ active, tabs, onChange }: { active: Tab; tabs: TabItem[]; onCh
             key={t.id}
             onClick={() => onChange(t.id)}
             className={clsx(
-              "relative flex items-center gap-1.5 px-4 py-2.5 text-xs font-display font-semibold tracking-widest transition-all duration-150",
+              "relative flex items-center gap-1.5 px-4 py-2.5 text-sm transition-all duration-150",
               active === t.id
-                ? "text-cyber-yellow"
+                ? "text-cyber-text font-medium"
                 : "text-cyber-muted hover:text-cyber-text"
             )}
           >
             {t.icon}
             {t.label}
-            {/* Active indicator */}
             {active === t.id && (
-              <span
-                className="absolute bottom-0 left-0 right-0 h-px bg-cyber-yellow"
-                style={{ boxShadow: "0 0 8px rgba(255,230,0,0.6)" }}
-              />
+              <span className="absolute bottom-0 left-0 right-0 h-px bg-cyber-text" />
             )}
           </button>
         ))}
@@ -112,12 +105,11 @@ function SkillChip({ id, name, variant = "parent" }: { id: string; name?: string
     <Link
       href={`/skills/${encodeURIComponent(id)}`}
       className={clsx(
-        "inline-flex items-center gap-1.5 px-3 py-1 font-mono text-xs transition-all duration-150 border",
+        "inline-flex items-center gap-1.5 px-3 py-1 text-sm transition-all duration-150 border rounded-lg",
         variant === "parent"
-          ? "border-cyber-border text-cyber-muted bg-cyber-card hover:border-cyber-cyan hover:text-cyber-cyan"
-          : "border-cyber-orange border-opacity-40 text-cyber-orange bg-cyber-orange bg-opacity-5 hover:border-opacity-80"
+          ? "border-cyber-border text-cyber-muted bg-white hover:border-cyber-dim hover:text-cyber-text"
+          : "border-orange-200 text-orange-700 bg-orange-50 hover:border-orange-300"
       )}
-      style={{ clipPath: "polygon(5px 0,100% 0,100% calc(100% - 5px),calc(100% - 5px) 100%,0 100%,0 5px)" }}
     >
       {variant === "child" && <GitMerge className="h-3 w-3 opacity-60" />}
       {name ?? id}
@@ -129,10 +121,10 @@ function SkillChip({ id, name, variant = "parent" }: { id: string; name?: string
 
 function MetaRow({ icon, label, value }: { icon: React.ReactNode; label: string; value: React.ReactNode }) {
   return (
-    <div className="flex items-start gap-3 py-2 border-b border-cyber-border last:border-0">
+    <div className="flex items-start gap-3 py-2.5 border-b border-cyber-border last:border-0">
       <span className="text-cyber-faint mt-0.5 flex-shrink-0">{icon}</span>
-      <span className="label-cyber w-24 flex-shrink-0 mt-0.5">{label}</span>
-      <span className="text-cyber-text text-xs font-mono min-w-0 break-all">{value}</span>
+      <span className="label-cyber w-28 flex-shrink-0 mt-0.5">{label}</span>
+      <span className="text-cyber-text text-sm font-mono min-w-0 break-all">{value}</span>
     </div>
   );
 }
@@ -161,7 +153,7 @@ export default function SkillDetailPage() {
       .then(([rec, meta]) => {
         setRecord(rec);
         const map: Record<string, RecordMetadataItem> = {};
-        for (const item of meta.items) map[item.record_id] = item;
+        for (const item of meta.items) map[item.id] = item;
         setAllRecords(map);
         setError(null);
       })
@@ -176,7 +168,7 @@ export default function SkillDetailPage() {
       Object.fromEntries(
         Object.entries(allRecords).map(([id, r]) => [
           id,
-          { name: r.name, record_id: r.record_id, parent_skill_ids: r.parent_skill_ids },
+          { name: r.name, id: r.id, parent_skill_ids: r.parent_skill_ids },
         ])
       ),
     [allRecords]
@@ -191,10 +183,10 @@ export default function SkillDetailPage() {
     if (!record) return;
     setDownloading(true);
     try {
-      const url = await defaultClient.downloadRecordUrl(record.record_id);
+      const url = await defaultClient.downloadRecordUrl(record.id);
       const a = document.createElement("a");
       a.href = url;
-      a.download = `${record.record_id}.zip`;
+      a.download = `${record.name}.md`;
       a.click();
       URL.revokeObjectURL(url);
     } catch { /* browser shows error */ }
@@ -204,11 +196,9 @@ export default function SkillDetailPage() {
   // ── Loading
   if (loading) {
     return (
-      <div className="flex flex-col items-center justify-center gap-4 py-32">
-        <Loader2 className="h-7 w-7 animate-spin text-cyber-cyan" />
-        <span className="font-mono text-xs text-cyber-muted tracking-widest animate-cyber-pulse">
-          FETCHING SKILL DATA...
-        </span>
+      <div className="flex flex-col items-center justify-center gap-3 py-32">
+        <Loader2 className="h-5 w-5 animate-spin text-cyber-faint" />
+        <span className="text-sm text-cyber-faint">Loading skill...</span>
       </div>
     );
   }
@@ -216,30 +206,27 @@ export default function SkillDetailPage() {
   // ── Error
   if (error || !record) {
     return (
-      <div
-        className="flex flex-col items-center gap-5 border border-cyber-pink bg-cyber-pink-dim p-14 text-center"
-        style={{ clipPath: "polygon(14px 0,100% 0,100% calc(100% - 14px),calc(100% - 14px) 100%,0 100%,0 14px)" }}
-      >
-        <AlertCircle className="h-10 w-10 text-cyber-pink" style={{ filter: "drop-shadow(0 0 8px rgba(255,0,60,0.5))" }} />
-        <p className="font-mono text-sm text-cyber-pink">{error ?? "SKILL NOT FOUND"}</p>
-        <Link href="/" className="btn-cyber-ghost text-xs tracking-widest">
-          BACK TO REGISTRY
+      <div className="flex flex-col items-center gap-5 border border-red-200 bg-red-50 rounded-xl p-14 text-center">
+        <AlertCircle className="h-10 w-10 text-cyber-pink" />
+        <p className="text-sm text-cyber-pink font-medium">{error ?? "Skill not found"}</p>
+        <Link href="/" className="btn-cyber-ghost text-sm">
+          Back to registry
         </Link>
       </div>
     );
   }
 
   const tabs: TabItem[] = [
-    { id: "overview", label: "OVERVIEW", icon: <Info className="h-3 w-3" /> },
+    { id: "overview", label: "Overview", icon: <Info className="h-3.5 w-3.5" /> },
     {
       id: "lineage",
-      label: `LINEAGE${children.length + record.parent_skill_ids.length > 0 ? ` (${children.length + record.parent_skill_ids.length})` : ""}`,
-      icon: <Network className="h-3 w-3" />,
+      label: `Lineage${children.length + record.parent_skill_ids.length > 0 ? ` (${children.length + record.parent_skill_ids.length})` : ""}`,
+      icon: <Network className="h-3.5 w-3.5" />,
     },
     {
       id: "diff",
-      label: "DIFF",
-      icon: <FileDiff className="h-3 w-3" />,
+      label: "Diff",
+      icon: <FileDiff className="h-3.5 w-3.5" />,
       hidden: !record.content_diff,
     },
   ];
@@ -249,43 +236,36 @@ export default function SkillDetailPage() {
       {/* Back nav */}
       <Link
         href="/"
-        className="mb-6 inline-flex items-center gap-1.5 font-mono text-xs text-cyber-muted hover:text-cyber-cyan transition-colors group"
+        className="mb-6 inline-flex items-center gap-1.5 text-sm text-cyber-muted hover:text-cyber-text transition-colors group"
       >
         <ArrowLeft className="h-3.5 w-3.5 group-hover:-translate-x-0.5 transition-transform" />
-        BACK TO REGISTRY
+        Back to registry
       </Link>
 
       {/* ── Header card ── */}
-      <div
-        className="relative bg-cyber-card border border-cyber-border p-6 mb-2"
-        style={{ clipPath: "polygon(16px 0,100% 0,100% calc(100% - 16px),calc(100% - 16px) 100%,0 100%,0 16px)" }}
-      >
-        {/* Top accent line */}
-        <div className="absolute top-0 left-0 right-0 h-px bg-gradient-to-r from-cyber-cyan via-cyber-yellow to-transparent" />
+      <div className="bg-white border border-cyber-border rounded-xl p-6 mb-3"
+        style={{ boxShadow: "0 1px 4px rgba(28,27,24,0.05)" }}>
 
         <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
           <div className="min-w-0 flex-1">
-            <h1
-              className="font-display font-bold text-2xl tracking-wide text-cyber-text break-words"
-              style={{ textShadow: "0 0 20px rgba(0,212,255,0.15)" }}
-            >
-              {record.name || record.record_id}
+            <h1 className="font-display font-semibold text-3xl text-cyber-text break-words">
+              {record.name}
             </h1>
             <p className="mt-1 font-mono text-[10px] text-cyber-faint break-all">
-              &gt;_ {record.record_id}
+              {record.id}
             </p>
           </div>
 
           <button
             onClick={handleDownload}
             disabled={downloading}
-            className="btn-cyber text-xs flex-shrink-0 disabled:opacity-40"
+            className="btn-cyber text-sm flex-shrink-0 disabled:opacity-40"
           >
             {downloading
               ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
               : <Download className="h-3.5 w-3.5" />
             }
-            DOWNLOAD ZIP
+            Download
           </button>
         </div>
 
@@ -298,17 +278,15 @@ export default function SkillDetailPage() {
 
         {/* Description */}
         {record.description && (
-          <p className="mt-4 text-sm text-cyber-muted leading-relaxed border-l-2 border-cyber-cyan border-opacity-30 pl-3">
+          <p className="mt-4 text-sm text-cyber-muted leading-relaxed border-l-2 border-cyber-border pl-3">
             {record.description}
           </p>
         )}
       </div>
 
       {/* ── Tab content ── */}
-      <div
-        className="bg-cyber-card border border-cyber-border p-6"
-        style={{ clipPath: "polygon(0 0,100% 0,100% calc(100% - 16px),calc(100% - 16px) 100%,0 100%)" }}
-      >
+      <div className="bg-white border border-cyber-border rounded-xl p-6"
+        style={{ boxShadow: "0 1px 4px rgba(28,27,24,0.05)" }}>
         <TabBar active={activeTab} tabs={tabs} onChange={setActiveTab} />
 
         {/* ── Overview ── */}
@@ -330,17 +308,15 @@ export default function SkillDetailPage() {
             )}
 
             {/* Metadata */}
-            <div className="border border-cyber-border bg-cyber-dark p-4"
-              style={{ clipPath: "polygon(6px 0,100% 0,100% calc(100% - 6px),calc(100% - 6px) 100%,0 100%,0 6px)" }}
-            >
+            <div className="border border-cyber-border bg-cyber-dark rounded-lg p-4">
               <MetaRow
                 icon={<User className="h-3.5 w-3.5" />}
-                label="CREATED BY"
+                label="Created by"
                 value={record.created_by || "unknown"}
               />
               <MetaRow
                 icon={<Calendar className="h-3.5 w-3.5" />}
-                label="CREATED"
+                label="Created"
                 value={
                   <span title={format(new Date(record.created_at), "PPPpp")}>
                     {formatDistanceToNow(new Date(record.created_at), { addSuffix: true })}
@@ -349,7 +325,7 @@ export default function SkillDetailPage() {
               />
               <MetaRow
                 icon={<Fingerprint className="h-3.5 w-3.5" />}
-                label="FINGERPRINT"
+                label="Fingerprint"
                 value={
                   <span title={record.content_fingerprint} className="text-cyber-cyan">
                     {record.content_fingerprint.slice(0, 20)}…
@@ -360,37 +336,36 @@ export default function SkillDetailPage() {
 
             {/* Change summary */}
             {record.change_summary && (
-              <div
-                className="bg-cyber-dark border border-cyber-dim p-4"
-                style={{ clipPath: "polygon(6px 0,100% 0,100% calc(100% - 6px),calc(100% - 6px) 100%,0 100%,0 6px)" }}
-              >
-                <p className="label-cyber mb-2">CHANGE SUMMARY</p>
-                <p className="text-sm text-cyber-text">{record.change_summary}</p>
+              <div className="bg-cyber-dark border border-cyber-border rounded-lg p-4">
+                <p className="label-cyber mb-2">Change summary</p>
+                <p className="text-sm text-cyber-text leading-relaxed">{record.change_summary}</p>
               </div>
             )}
 
             {/* Lineage quick summary */}
             {(record.parent_skill_ids.length > 0 || children.length > 0) && (
               <div>
-                <p className="label-cyber mb-2">LINEAGE</p>
-                <div className="flex flex-wrap gap-3 text-xs font-mono text-cyber-muted">
+                <p className="label-cyber mb-2">Lineage</p>
+                <div className="flex flex-wrap gap-3 text-sm text-cyber-muted">
                   {record.parent_skill_ids.length > 0 && (
                     <span className="flex items-center gap-1.5">
-                      <GitBranch className="h-3 w-3 text-cyber-cyan" />
-                      <span className="text-cyber-cyan">{record.parent_skill_ids.length}</span> parent{record.parent_skill_ids.length !== 1 ? "s" : ""}
+                      <GitBranch className="h-3.5 w-3.5 text-cyber-cyan" />
+                      <span className="font-medium text-cyber-text">{record.parent_skill_ids.length}</span>
+                      {" "}parent{record.parent_skill_ids.length !== 1 ? "s" : ""}
                     </span>
                   )}
                   {children.length > 0 && (
                     <span className="flex items-center gap-1.5">
-                      <GitMerge className="h-3 w-3 text-cyber-orange" />
-                      <span className="text-cyber-orange">{children.length}</span> child{children.length !== 1 ? "ren" : ""}
+                      <GitMerge className="h-3.5 w-3.5 text-cyber-orange" />
+                      <span className="font-medium text-cyber-text">{children.length}</span>
+                      {" "}child{children.length !== 1 ? "ren" : ""}
                     </span>
                   )}
                   <button
                     onClick={() => setActiveTab("lineage")}
-                    className="text-cyber-yellow hover:underline font-semibold"
+                    className="text-cyber-yellow font-medium hover:underline underline-offset-2"
                   >
-                    VIEW GRAPH →
+                    View graph →
                   </button>
                 </div>
               </div>
@@ -405,7 +380,7 @@ export default function SkillDetailPage() {
 
             {record.parent_skill_ids.length > 0 && (
               <div>
-                <p className="label-cyber mb-2">PARENTS</p>
+                <p className="label-cyber mb-2">Parents</p>
                 <div className="flex flex-wrap gap-2">
                   {record.parent_skill_ids.map((pid) => (
                     <SkillChip key={pid} id={pid} name={allRecords[pid]?.name} variant="parent" />
@@ -416,22 +391,19 @@ export default function SkillDetailPage() {
 
             {children.length > 0 && (
               <div>
-                <p className="label-cyber mb-2">CHILDREN ({children.length})</p>
+                <p className="label-cyber mb-2">Children ({children.length})</p>
                 <div className="flex flex-wrap gap-2">
                   {children.map((c) => (
-                    <SkillChip key={c.record_id} id={c.record_id} name={c.name} variant="child" />
+                    <SkillChip key={c.id} id={c.id} name={c.name} variant="child" />
                   ))}
                 </div>
               </div>
             )}
 
             {record.parent_skill_ids.length === 0 && children.length === 0 && (
-              <div
-                className="flex items-center justify-center border border-dashed border-cyber-border py-10"
-                style={{ clipPath: "polygon(8px 0,100% 0,100% calc(100% - 8px),calc(100% - 8px) 100%,0 100%,0 8px)" }}
-              >
-                <span className="font-mono text-sm text-cyber-faint">
-                  &gt;_ ROOT SKILL — NO LINEAGE
+              <div className="flex items-center justify-center border border-dashed border-cyber-border rounded-lg py-10">
+                <span className="text-sm text-cyber-faint">
+                  Root skill — no lineage
                 </span>
               </div>
             )}

@@ -40,10 +40,10 @@ interface GraphLink {
 // ---------------------------------------------------------------------------
 
 const NODE_COLOR: Record<NodeKind, string> = {
-  ancestor: "#94a3b8",    // slate-400
-  current: "#4263eb",     // brand-700
-  child: "#f97316",       // orange-500
-  grandchild: "#fbbf24",  // amber-400
+  ancestor:   "#B4B1AA",
+  current:    "#1C1B18",
+  child:      "#C3A97C",
+  grandchild: "#8B7860",
 };
 
 const NODE_RADIUS: Record<NodeKind, number> = {
@@ -66,13 +66,13 @@ const LABEL_OFFSET: Record<NodeKind, number> = {
 
 export interface RichRecord {
   name: string;
-  record_id: string;
+  id: string;
   parent_skill_ids: string[];
 }
 
 interface LineageGraphProps {
   record: RecordResponse;
-  /** All records keyed by record_id — used to traverse ancestry and descendants. */
+  /** All records keyed by id (UUID) — used to traverse ancestry and descendants. */
   allRecords: Record<string, RichRecord>;
 }
 
@@ -95,13 +95,13 @@ function buildGraph(
   };
 
   // ── 1. Current
-  addNode(record.record_id, "current");
+  addNode(record.id, "current");
 
   // ── 2. Ancestors: BFS upward
   const ancQueue: Array<{ id: string; depth: number }> = record.parent_skill_ids.map(
     (pid) => ({ id: pid, depth: 1 })
   );
-  const ancVisited = new Set<string>([record.record_id]);
+  const ancVisited = new Set<string>([record.id]);
 
   while (ancQueue.length > 0) {
     const { id, depth } = ancQueue.shift()!;
@@ -126,9 +126,9 @@ function buildGraph(
   }
 
   const descQueue: Array<{ id: string; depth: number }> = (
-    childrenOf.get(record.record_id) ?? []
+    childrenOf.get(record.id) ?? []
   ).map((cid) => ({ id: cid, depth: 1 }));
-  const descVisited = new Set<string>([record.record_id]);
+  const descVisited = new Set<string>([record.id]);
 
   while (descQueue.length > 0) {
     const { id, depth } = descQueue.shift()!;
@@ -148,7 +148,7 @@ function buildGraph(
 
   for (const nodeId of nodeMap.keys()) {
     const parentIds =
-      nodeId === record.record_id
+      nodeId === record.id
         ? record.parent_skill_ids
         : (allRecords[nodeId]?.parent_skill_ids ?? []);
 
@@ -193,11 +193,11 @@ export function LineageGraph({ record, allRecords }: LineageGraphProps) {
   const handleNodeClick = useCallback(
     (node: object) => {
       const n = node as GraphNode;
-      if (n.id !== record.record_id) {
+      if (n.id !== record.id) {
         router.push(`/skills/${encodeURIComponent(n.id)}`);
       }
     },
-    [record.record_id, router]
+    [record.id, router]
   );
 
   const paintNode = useCallback(

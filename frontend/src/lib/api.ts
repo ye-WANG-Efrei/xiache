@@ -34,6 +34,7 @@ export interface RecordResponse {
   visibility: string;
   level: string;
   tags: string[];
+  category: string | null;
   input_schema: Record<string, unknown>;
   output_schema: Record<string, unknown>;
   created_by: string;
@@ -43,6 +44,18 @@ export interface RecordResponse {
   parent_skill_ids: string[];
   created_at: string;
   embedding?: number[] | null;
+}
+
+export interface CategoryItem {
+  id: string;
+  label: string;
+  skill_count: number;
+  updated_at: string;
+}
+
+export interface CategoryListResponse {
+  items: CategoryItem[];
+  count: number;
 }
 
 export interface RecordMetadataItem
@@ -191,6 +204,12 @@ export class XiacheClient {
       "/api/v1/skills/metadata",
       { params }
     );
+    return data;
+  }
+
+  // List all semantic categories
+  async listCategories(): Promise<CategoryListResponse> {
+    const { data } = await this.http.get<CategoryListResponse>("/api/v1/categories");
     return data;
   }
 
