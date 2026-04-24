@@ -57,7 +57,7 @@ async def ingest_openspace(
     # --- Update quality counters for each SkillJudgment ---
     for judgment in body.skill_judgments:
         result = await db.execute(
-            select(SkillRecord).where(SkillRecord.id == judgment.skill_id)
+            select(SkillRecord).where(SkillRecord.slug == judgment.skill_id)
         )
         skill: Optional[SkillRecord] = result.scalar_one_or_none()
         if skill is None:
@@ -78,7 +78,7 @@ async def ingest_openspace(
             # total_selections grows; applied/fallback unchanged → dilutes fallback_rate (intentional)
 
         db.add(skill)
-        counters_updated.append(skill.id)
+        counters_updated.append(skill.slug)
 
         if judgment.note:
             failure_notes_by_skill.setdefault(skill.id, []).append(judgment.note)
@@ -109,7 +109,7 @@ async def ingest_openspace(
     # --- Check thresholds and trigger auto-evolution (isolated per skill) ---
     for skill_id in counters_updated:
         result = await db.execute(
-            select(SkillRecord).where(SkillRecord.id == skill_id)
+            select(SkillRecord).where(SkillRecord.slug == skill_id)
         )
         skill = result.scalar_one_or_none()
         if skill is None:

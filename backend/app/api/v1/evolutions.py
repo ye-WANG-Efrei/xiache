@@ -97,15 +97,15 @@ async def _create_skill_record_from_evolution(
     emb_text = emb_service.build_embedding_text(evo.proposed_name, evo.proposed_desc, merged_tags)
     embedding = await emb_service.generate_embedding(emb_text)
 
-    record_id = evo.candidate_skill_id or f"evo:{evo.id}"
+    slug = evo.candidate_skill_id or f"evo:{evo.id[:8]}"
 
     collision = (await db.execute(
-        select(SkillRecord).where(SkillRecord.id == record_id)
+        select(SkillRecord).where(SkillRecord.slug == slug)
     )).scalar_one_or_none()
     if collision is not None:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
-            detail=f"candidate_skill_id {record_id!r} already exists as a skill record.",
+            detail=f"candidate_skill_id {slug!r} already exists as a skill record.",
         )
 
     fingerprint = hashlib.sha256(
@@ -113,8 +113,8 @@ async def _create_skill_record_from_evolution(
     ).hexdigest()
 
     record = SkillRecord(
-        id=record_id,
-        artifact_id=None,
+        id=str(uuid.uuid4()),
+        slug=slug,
         name=evo.proposed_name,
         description=evo.proposed_desc,
         body=evo.proposed_body,
@@ -136,7 +136,7 @@ async def _create_skill_record_from_evolution(
     await db.flush()
 
     if evo.parent_skill_id:
-        db.add(SkillLineage(child_id=record_id, parent_id=evo.parent_skill_id))
+        db.add(SkillLineage(child_slug=slug, parent_slug=evo.parent_skill_id))
         await db.flush()
 
     return record
@@ -166,7 +166,7 @@ async def propose_evolution(
     # Pre-check 1: parent exists in DB
     if body.parent_skill_id:
         parent_exists = (await db.execute(
-            select(SkillRecord).where(SkillRecord.id == body.parent_skill_id)
+            select(SkillRecord).where(SkillRecord.slug == body.parent_skill_id)
         )).scalar_one_or_none() is not None
     else:
         parent_exists = True
@@ -186,7 +186,6 @@ async def propose_evolution(
         parent_skill_id=body.parent_skill_id,
         change_summary=body.change_summary,
         parent_exists=parent_exists,
-        artifact_accessible=True,
         is_duplicate=is_duplicate,
     )
 
@@ -202,7 +201,6 @@ async def propose_evolution(
 
     evo = SkillEvolution(
         id=evo_id,
-        artifact_id=None,
         parent_skill_id=body.parent_skill_id,
         candidate_skill_id=body.candidate_skill_id,
         origin=body.origin,
@@ -224,7 +222,7 @@ async def propose_evolution(
     if evo_status == "accepted":
         record = await _create_skill_record_from_evolution(evo=evo, owner=owner, db=db)
         evo.status = "accepted"
-        evo.result_record_id = record.id
+        evo.result_record_id = record.slug
         evo.auto_accepted = True
     else:
         evo.status = evo_status

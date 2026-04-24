@@ -4,6 +4,8 @@ import base64
 import hashlib
 import json
 import logging
+import re
+import uuid
 from datetime import datetime, timezone
 from typing import Optional
 
@@ -38,15 +40,15 @@ def _fingerprint(name: str, description: str, body: str) -> str:
     return hashlib.sha256(content.encode()).hexdigest()
 
 
-def _encode_cursor(record_id: str, created_at: datetime) -> str:
-    payload = json.dumps({"id": record_id, "ts": created_at.isoformat()})
+def _encode_cursor(slug: str, created_at: datetime) -> str:
+    payload = json.dumps({"slug": slug, "ts": created_at.isoformat()})
     return base64.urlsafe_b64encode(payload.encode()).decode()
 
 
 def _decode_cursor(cursor: str) -> tuple[str, datetime]:
     try:
         payload = json.loads(base64.urlsafe_b64decode(cursor.encode()).decode())
-        return payload["id"], datetime.fromisoformat(payload["ts"])
+        return payload["slug"], datetime.fromisoformat(payload["ts"])
     except Exception as exc:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -54,16 +56,16 @@ def _decode_cursor(cursor: str) -> tuple[str, datetime]:
         ) from exc
 
 
-async def _get_parent_ids(db: AsyncSession, record_id: str) -> list[str]:
+async def _get_parent_slugs(db: AsyncSession, slug: str) -> list[str]:
     result = await db.execute(
-        select(SkillLineage.parent_id).where(SkillLineage.child_id == record_id)
+        select(SkillLineage.parent_slug).where(SkillLineage.child_slug == slug)
     )
     return [row[0] for row in result.fetchall()]
 
 
 def _record_to_response(
     record: SkillRecord,
-    parent_ids: list[str],
+    parent_slugs: list[str],
     include_embedding: bool = False,
 ) -> RecordResponse:
     embedding_out = None
@@ -71,9 +73,7 @@ def _record_to_response(
         embedding_out = list(record.embedding)
 
     return RecordResponse(
-        record_id=record.id,
-        artifact_id=record.artifact_id,
-        artifact_ref=f"artifact://{record.id}",
+        id=record.id,
         name=record.name,
         description=record.description,
         body=record.body,
@@ -88,7 +88,7 @@ def _record_to_response(
         change_summary=record.change_summary,
         content_diff=record.content_diff,
         content_fingerprint=record.content_fingerprint,
-        parent_skill_ids=parent_ids,
+        parent_skill_ids=parent_slugs,
         created_at=record.created_at,
         embedding=embedding_out,
     )
@@ -112,11 +112,12 @@ async def create_record(
     owner: str = Depends(require_auth),
     db: AsyncSession = Depends(get_db),
 ) -> RecordResponse:
+    slug = body.record_id or re.sub(r"[^a-z0-9_-]", "_", body.name.lower().strip())
     fingerprint = _fingerprint(body.name, body.description, body.body)
 
-    # Dedup: same record_id
-    existing_by_id = (await db.execute(
-        select(SkillRecord).where(SkillRecord.id == body.record_id)
+    # Dedup: same slug
+    existing_by_slug = (await db.execute(
+        select(SkillRecord).where(SkillRecord.slug == slug)
     )).scalar_one_or_none()
 
     # Dedup: same content fingerprint
@@ -124,27 +125,27 @@ async def create_record(
         select(SkillRecord).where(SkillRecord.content_fingerprint == fingerprint)
     )).scalar_one_or_none()
 
-    if existing_by_id is not None:
-        if existing_by_id.content_fingerprint != fingerprint:
+    if existing_by_slug is not None:
+        if existing_by_slug.content_fingerprint != fingerprint:
             raise HTTPException(
                 status_code=status.HTTP_409_CONFLICT,
                 detail=ErrorResponse(
                     error="record_id_fingerprint_conflict",
-                    detail=f"Record {body.record_id!r} already exists with different content.",
-                    existing_record_id=existing_by_id.id,
-                    fingerprint=existing_by_id.content_fingerprint,
+                    detail=f"Record {slug!r} already exists with different content.",
+                    existing_record_id=existing_by_slug.slug,
+                    fingerprint=existing_by_slug.content_fingerprint,
                 ).model_dump(),
             )
-        parent_ids = await _get_parent_ids(db, existing_by_id.id)
-        return _record_to_response(existing_by_id, parent_ids)
+        parent_slugs = await _get_parent_slugs(db, existing_by_slug.slug)
+        return _record_to_response(existing_by_slug, parent_slugs)
 
-    if existing_by_fp is not None and existing_by_fp.id != body.record_id:
+    if existing_by_fp is not None and existing_by_fp.slug != slug:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail=ErrorResponse(
                 error="fingerprint_record_id_conflict",
-                detail=f"Same content already registered under record {existing_by_fp.id!r}.",
-                existing_record_id=existing_by_fp.id,
+                detail=f"Same content already registered under record {existing_by_fp.slug!r}.",
+                existing_record_id=existing_by_fp.slug,
                 fingerprint=fingerprint,
             ).model_dump(),
         )
@@ -154,8 +155,8 @@ async def create_record(
     embedding = await emb_service.generate_embedding(emb_text)
 
     record = SkillRecord(
-        id=body.record_id,
-        artifact_id=None,
+        id=str(uuid.uuid4()),
+        slug=slug,
         name=body.name,
         description=body.description,
         body=body.body,
@@ -176,8 +177,8 @@ async def create_record(
     db.add(record)
     await db.flush()
 
-    for parent_id in body.parent_skill_ids:
-        db.add(SkillLineage(child_id=body.record_id, parent_id=parent_id))
+    for parent_slug in body.parent_skill_ids:
+        db.add(SkillLineage(child_slug=slug, parent_slug=parent_slug))
 
     await db.flush()
     return _record_to_response(record, list(body.parent_skill_ids))
@@ -197,18 +198,18 @@ async def list_records_metadata(
     owner: str = Depends(require_auth),
     db: AsyncSession = Depends(get_db),
 ) -> RecordMetadataResponse:
-    q = select(SkillRecord).order_by(SkillRecord.created_at.desc(), SkillRecord.id.desc())
+    q = select(SkillRecord).order_by(SkillRecord.created_at.desc(), SkillRecord.slug.desc())
 
     if visibility:
         q = q.where(SkillRecord.visibility == visibility)
 
     if cursor:
-        _cursor_id, cursor_ts = _decode_cursor(cursor)
+        _cursor_slug, cursor_ts = _decode_cursor(cursor)
         q = q.where(
             (SkillRecord.created_at < cursor_ts)
             | (
                 (SkillRecord.created_at == cursor_ts)
-                & (SkillRecord.id < _cursor_id)
+                & (SkillRecord.slug < _cursor_slug)
             )
         )
 
@@ -222,15 +223,15 @@ async def list_records_metadata(
     next_cursor = None
     if has_more and rows:
         last = rows[-1]
-        next_cursor = _encode_cursor(last.id, last.created_at)
+        next_cursor = _encode_cursor(last.slug, last.created_at)
 
-    record_ids = [r.id for r in rows]
+    slugs = [r.slug for r in rows]
     lineage_rows = (await db.execute(
-        select(SkillLineage).where(SkillLineage.child_id.in_(record_ids))
+        select(SkillLineage).where(SkillLineage.child_slug.in_(slugs))
     )).scalars().all()
-    parents_map: dict[str, list[str]] = {rid: [] for rid in record_ids}
+    parents_map: dict[str, list[str]] = {s: [] for s in slugs}
     for lin in lineage_rows:
-        parents_map[lin.child_id].append(lin.parent_id)
+        parents_map[lin.child_slug].append(lin.parent_slug)
 
     count_q = select(func.count()).select_from(SkillRecord)
     if visibility:
@@ -244,9 +245,7 @@ async def list_records_metadata(
             emb_out = list(rec.embedding)
         items.append(
             RecordMetadataItem(
-                record_id=rec.id,
-                artifact_id=rec.artifact_id,
-                artifact_ref=f"artifact://{rec.id}",
+                id=rec.id,
                 name=rec.name,
                 description=rec.description,
                 body=rec.body,
@@ -260,7 +259,7 @@ async def list_records_metadata(
                 created_by=rec.created_by,
                 change_summary=rec.change_summary,
                 content_fingerprint=rec.content_fingerprint,
-                parent_skill_ids=parents_map.get(rec.id, []),
+                parent_skill_ids=parents_map.get(rec.slug, []),
                 created_at=rec.created_at,
                 embedding=emb_out,
             )
@@ -282,12 +281,17 @@ async def get_record(
     db: AsyncSession = Depends(get_db),
 ) -> RecordResponse:
     record = (await db.execute(
-        select(SkillRecord).where(SkillRecord.id == record_id)
+        select(SkillRecord).where(SkillRecord.slug == record_id)
     )).scalar_one_or_none()
     if record is None:
+        # fallback: try UUID lookup
+        record = (await db.execute(
+            select(SkillRecord).where(SkillRecord.id == record_id)
+        )).scalar_one_or_none()
+    if record is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Record {record_id!r} not found")
-    parent_ids = await _get_parent_ids(db, record_id)
-    return _record_to_response(record, parent_ids, include_embedding=include_embedding)
+    parent_slugs = await _get_parent_slugs(db, record.slug)
+    return _record_to_response(record, parent_slugs, include_embedding=include_embedding)
 
 
 # ---------------------------------------------------------------------------
@@ -302,8 +306,12 @@ async def download_record(
     db: AsyncSession = Depends(get_db),
 ) -> Response:
     record = (await db.execute(
-        select(SkillRecord).where(SkillRecord.id == record_id)
+        select(SkillRecord).where(SkillRecord.slug == record_id)
     )).scalar_one_or_none()
+    if record is None:
+        record = (await db.execute(
+            select(SkillRecord).where(SkillRecord.id == record_id)
+        )).scalar_one_or_none()
     if record is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Record {record_id!r} not found")
 

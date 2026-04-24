@@ -37,25 +37,27 @@ class ApiKey(Base):
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
 
 
-class Artifact(Base):
-    __tablename__ = "artifacts"
+class CategoryPrototype(Base):
+    __tablename__ = "category_prototypes"
 
-    id: Mapped[str] = mapped_column(String(36), primary_key=True)  # UUID
-    file_count: Mapped[int] = mapped_column(Integer, nullable=False)
-    file_names: Mapped[list[str]] = mapped_column(JSONB, nullable=False, default=list)
-    content_fingerprint: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
+    id: Mapped[str] = mapped_column(String(255), primary_key=True)   # category slug, e.g. "finance"
+    label: Mapped[str] = mapped_column(String(255), nullable=False, default="")
+    skill_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    embedding: Mapped[Optional[Any]] = mapped_column(Vector(2048), nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=utcnow, nullable=False
     )
-    created_by: Mapped[str] = mapped_column(String(255), nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utcnow, onupdate=utcnow, nullable=False
+    )
+
 
 class SkillRecord(Base):
     __tablename__ = "skill_records"
 
-    id: Mapped[str] = mapped_column(String(255), primary_key=True)
-    artifact_id: Mapped[Optional[str]] = mapped_column(
-        String(36), ForeignKey("artifacts.id", ondelete="RESTRICT"), nullable=True, index=True
-    )
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)   # UUID — backend-generated
+    slug: Mapped[str] = mapped_column(String(255), unique=True, nullable=False, index=True)  # user-supplied record_id
+    category: Mapped[Optional[str]] = mapped_column(String(255), nullable=True, index=True)
     name: Mapped[str] = mapped_column(String(255), nullable=False, index=True)
     description: Mapped[str] = mapped_column(Text, nullable=False, default="")
     body: Mapped[str] = mapped_column(Text, nullable=False, default="")
@@ -70,7 +72,7 @@ class SkillRecord(Base):
     change_summary: Mapped[str] = mapped_column(Text, nullable=False, default="")
     content_diff: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     content_fingerprint: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
-    embedding: Mapped[Optional[Any]] = mapped_column(Vector(1536), nullable=True)
+    embedding: Mapped[Optional[Any]] = mapped_column(Vector(2048), nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=utcnow, nullable=False
     )
@@ -83,13 +85,13 @@ class SkillRecord(Base):
 
     children: Mapped[list["SkillLineage"]] = relationship(
         "SkillLineage",
-        foreign_keys="SkillLineage.parent_id",
+        foreign_keys="SkillLineage.parent_slug",
         back_populates="parent",
         cascade="all, delete-orphan",
     )
     parents: Mapped[list["SkillLineage"]] = relationship(
         "SkillLineage",
-        foreign_keys="SkillLineage.child_id",
+        foreign_keys="SkillLineage.child_slug",
         back_populates="child",
         cascade="all, delete-orphan",
     )
@@ -98,25 +100,25 @@ class SkillRecord(Base):
 class SkillLineage(Base):
     __tablename__ = "skill_lineage"
     __table_args__ = (
-        UniqueConstraint("child_id", "parent_id", name="uq_lineage_child_parent"),
+        UniqueConstraint("child_slug", "parent_slug", name="uq_lineage_child_parent"),
     )
 
-    child_id: Mapped[str] = mapped_column(
+    child_slug: Mapped[str] = mapped_column(
         String(255),
-        ForeignKey("skill_records.id", ondelete="CASCADE"),
+        ForeignKey("skill_records.slug", ondelete="CASCADE"),
         primary_key=True,
     )
-    parent_id: Mapped[str] = mapped_column(
+    parent_slug: Mapped[str] = mapped_column(
         String(255),
-        ForeignKey("skill_records.id", ondelete="CASCADE"),
+        ForeignKey("skill_records.slug", ondelete="CASCADE"),
         primary_key=True,
     )
 
     child: Mapped["SkillRecord"] = relationship(
-        "SkillRecord", foreign_keys=[child_id], back_populates="parents"
+        "SkillRecord", foreign_keys=[child_slug], back_populates="parents"
     )
     parent: Mapped["SkillRecord"] = relationship(
-        "SkillRecord", foreign_keys=[parent_id], back_populates="children"
+        "SkillRecord", foreign_keys=[parent_slug], back_populates="children"
     )
 
 
@@ -124,15 +126,12 @@ class SkillEvolution(Base):
     __tablename__ = "skill_evolutions"
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True)  # UUID
-    artifact_id: Mapped[Optional[str]] = mapped_column(
-        String(36), ForeignKey("artifacts.id", ondelete="RESTRICT"), nullable=True, index=True
-    )
-    parent_skill_id: Mapped[Optional[str]] = mapped_column(
-        String(255), ForeignKey("skill_records.id", ondelete="SET NULL"), nullable=True
-    )
+    # Slugs stored here (not UUIDs) so API responses are human-readable without joins
+    parent_skill_id: Mapped[Optional[str]] = mapped_column(String(255), nullable=True, index=True)
+    candidate_skill_id: Mapped[Optional[str]] = mapped_column(String(255), nullable=True, index=True)
+    result_record_id: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
     origin: Mapped[str] = mapped_column(String(64), nullable=False)
     status: Mapped[str] = mapped_column(String(32), nullable=False, default="pending", index=True)
-    candidate_skill_id: Mapped[Optional[str]] = mapped_column(String(255), nullable=True, index=True)
     proposed_name: Mapped[str] = mapped_column(String(255), nullable=False, default="")
     proposed_desc: Mapped[str] = mapped_column(Text, nullable=False, default="")
     proposed_body: Mapped[str] = mapped_column(Text, nullable=False, default="")
@@ -146,9 +145,6 @@ class SkillEvolution(Base):
     evaluated_at: Mapped[Optional[datetime]] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
-    result_record_id: Mapped[Optional[str]] = mapped_column(
-        String(255), ForeignKey("skill_records.id", ondelete="SET NULL"), nullable=True
-    )
     evaluation_notes: Mapped[str] = mapped_column(Text, nullable=False, default="")
     quality_score: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
     auto_accepted: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
@@ -158,9 +154,8 @@ class ExecutionRun(Base):
     __tablename__ = "execution_runs"
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True)
-    skill_id: Mapped[Optional[str]] = mapped_column(
-        String(255), ForeignKey("skill_records.id", ondelete="SET NULL"), nullable=True, index=True
-    )
+    # Store slug for human-readable audit trail (no FK — skill may be deleted/renamed)
+    skill_id: Mapped[Optional[str]] = mapped_column(String(255), nullable=True, index=True)
     task: Mapped[str] = mapped_column(Text, nullable=False, default="")
     status: Mapped[str] = mapped_column(String(32), nullable=False, default="running", index=True)
     executor_type: Mapped[str] = mapped_column(String(32), nullable=False, default="reasoning")

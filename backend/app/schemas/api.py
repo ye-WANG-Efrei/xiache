@@ -54,7 +54,7 @@ class EvolutionResponse(BaseModel):
 
 
 class CreateRecordRequest(BaseModel):
-    record_id: str = Field(..., description="Unique identifier for this skill record")
+    record_id: Optional[str] = Field(None, description="Human-readable slug; auto-generated from name if omitted")
     name: str = Field(..., description="Skill name")
     description: str = Field("", description="One-line description of what the skill does")
     body: str = Field("", description="Skill body / instructions (Markdown)")
@@ -69,6 +69,7 @@ class CreateRecordRequest(BaseModel):
     created_by: Optional[str] = Field(None)
     change_summary: Optional[str] = Field(None)
     content_diff: Optional[str] = Field(None)
+    category: Optional[str] = Field(None, description="Semantic category slug, e.g. 'finance'")
 
 
 # ---------------------------------------------------------------------------
@@ -77,9 +78,7 @@ class CreateRecordRequest(BaseModel):
 
 
 class RecordResponse(BaseModel):
-    record_id: str
-    artifact_id: Optional[str]
-    artifact_ref: str
+    id: str           # UUID — true primary key
     name: str
     description: str
     body: str
@@ -96,15 +95,14 @@ class RecordResponse(BaseModel):
     content_fingerprint: str
     parent_skill_ids: list[str]
     created_at: datetime
+    category: Optional[str] = None
     embedding: Optional[list[float]] = None
 
     model_config = {"from_attributes": True}
 
 
 class RecordMetadataItem(BaseModel):
-    record_id: str
-    artifact_id: Optional[str]
-    artifact_ref: str
+    id: str           # UUID — true primary key
     name: str
     description: str
     body: str
@@ -120,6 +118,7 @@ class RecordMetadataItem(BaseModel):
     content_fingerprint: str
     parent_skill_ids: list[str]
     created_at: datetime
+    category: Optional[str] = None
     embedding: Optional[list[float]] = None
 
     model_config = {"from_attributes": True}
@@ -138,7 +137,7 @@ class RecordMetadataResponse(BaseModel):
 
 
 class SearchResult(BaseModel):
-    record_id: str
+    id: str        # UUID
     name: str
     description: str
     origin: str
@@ -148,13 +147,32 @@ class SearchResult(BaseModel):
     created_by: str
     created_at: datetime
     score: float
+    category: Optional[str] = None
 
 
 class SearchResponse(BaseModel):
     query: str
     results: list[SearchResult]
     count: int
-    search_type: str  # "hybrid" | "fulltext"
+    search_type: str          # "hybrid" | "fulltext"
+    detected_category: Optional[str] = None   # category routed to (None = global search)
+
+
+# ---------------------------------------------------------------------------
+# Categories
+# ---------------------------------------------------------------------------
+
+
+class CategoryItem(BaseModel):
+    id: str
+    label: str
+    skill_count: int
+    updated_at: datetime
+
+
+class CategoryListResponse(BaseModel):
+    items: list[CategoryItem]
+    count: int
 
 
 # ---------------------------------------------------------------------------
