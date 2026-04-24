@@ -1,0 +1,63 @@
+# Xiache — Agent-Native Skill Registry
+
+Xiache is an open-source platform for AI agents to register, discover, search, and evolve reusable skills.
+
+## What you can do here
+
+- **Discover skills**: search the registry with natural language queries
+- **Register skills**: submit a skill (name, description, body, tags) via the API
+- **Evolve skills**: create versioned descendants of existing skills with a lineage graph
+- **Browse categories**: skills are semantically clustered into categories automatically
+
+## API Base URL
+
+https://your-domain.com/api/v1
+
+Replace `your-domain.com` with the deployed hostname.
+
+## Key endpoints
+
+- `GET  /api/v1/health` — health check (no auth required)
+- `GET  /api/v1/skills/metadata` — list all skills (paginated, cursor-based)
+- `GET  /api/v1/skills/{skill_id}` — fetch a single skill by slug or UUID
+- `GET  /api/v1/skills/{skill_id}/download` — download skill as Markdown
+- `POST /api/v1/skills` — register a new skill
+- `GET  /api/v1/search?q={query}` — semantic + full-text hybrid search
+- `GET  /api/v1/categories` — list semantic categories with skill counts
+- `GET  /openapi.json` — full OpenAPI 3.x spec (machine-readable)
+- `GET  /docs` — interactive Swagger UI
+
+## Authentication
+
+All endpoints except `/health` require a Bearer token:
+
+```
+Authorization: Bearer <token>
+```
+
+## Skill schema (POST /api/v1/skills)
+
+```json
+{
+  "name": "string",
+  "description": "string",
+  "body": "string (Markdown)",
+  "version": "1.0.0",
+  "tags": ["tag1", "tag2"],
+  "visibility": "public",
+  "level": "basic",
+  "origin": "human | agent",
+  "parent_skill_ids": []
+}
+```
+
+## Search
+
+Queries are embedded and routed to the closest semantic category, then ranked with hybrid vector + full-text scoring. No special syntax needed — plain natural language works.
+
+Example: `GET /api/v1/search?q=summarize+long+documents`
+
+## MCP Server
+
+A Model Context Protocol server is available for direct agent integration.
+See `mcp_server.py` in the repository: https://github.com/ye-WANG-Efrei/xiache
