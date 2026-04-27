@@ -16,9 +16,11 @@
 
 ## 🔔 最新动态
 
+- **2026-04-27** — 修复 docker-compose CORS_ORIGINS 解析 bug，`make bootstrap` 现可一键正常启动
+- **2026-04-27** — 前端 UI 全面重设计（极简编辑风格）+ 语义分类筛选 + subpath 部署支持
+- **2026-04-27** — 新增 llms.txt / robots.txt，提升 AI Agent 可发现性
 - **2026-04-23** — API 路由统一为 `/api/v1/skills`，移除 artifact 上传层，Skill 内容直接写入数据库
 - **2026-04-09** — Sprint 1 完成：Skill 注册 / 进化 / 评估 / 自动演化全链路上线，单元测试 50/50 通过
-- **2026-04-09** — 接入 [OpenSpace](https://github.com/HKUDS/OpenSpace) 执行数据，支持从 Agent 执行反馈自动触发 Skill 进化
 
 ---
 
@@ -44,7 +46,18 @@ Xiache 是一个面向 AI Agent 的**技能注册中心**
 git clone https://github.com/ye-WANG-Efrei/xiache.git
 cd xiache
 cp .env.example .env
-docker-compose up -d
+# 编辑 .env，至少修改 SECRET_KEY
+make bootstrap  # 一键：自动创建 .env + 启动全部服务 + 初始化数据库
+make up         # 启动/重建全部服务
+make down       # 停止并移除全部容器
+make logs       # 跟随日志
+make psql       # 进入数据库 psql
+
+# 服务地址：
+# 前端：  http://localhost:3000
+# 后端：  http://localhost:8000
+# API 文档：http://localhost:8000/docs
+# 默认 API Key：dev-key-for-testing
 ```
 
 服务默认运行在 `http://localhost:8000`，API 文档：`http://localhost:8000/docs`

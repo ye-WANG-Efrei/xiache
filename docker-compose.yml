@@ -46,7 +46,7 @@ services:
       SECRET_KEY: ${SECRET_KEY:-change-me-in-production}
       XIACHE_DEV_MODE: ${XIACHE_DEV_MODE:-true}
       DEV_API_KEY: ${DEV_API_KEY:-dev-key-for-testing}
-      CORS_ORIGINS: ${CORS_ORIGINS:-'["http://localhost:3000","http://frontend:3000"]'}
+      CORS_ORIGINS: ${CORS_ORIGINS:-["http://localhost:3000","http://frontend:3000"]}
     volumes:
       - artifact_data:/data/artifacts
     ports:
