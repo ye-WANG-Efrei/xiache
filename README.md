@@ -38,14 +38,32 @@ Xiache 是一个面向 AI Agent 的**技能注册中心**
 - Docker & Docker Compose
 - Python 3.14+（本地开发）
 
-### 启动服务
-
-```bash
-git clone https://github.com/ye-WANG-Efrei/xiache.git
+ ## 启动服务                                                      
+                                          
+```bash                                                          
+git clone https://github.com/ye-WANG-Efrei/xiache.git            
 cd xiache
-cp .env.example .env
-docker-compose up -d
 ```
+> [!TIP]
+> 第一次启动，
+> 使用 `make bootstrap`：                             
+> - 自动从 .env.example 创建 .env（仅在不存在时）
+> - 构建并启动全部容器
+> - 自动初始化数据库
+> ```bash
+> make bootstrap
+> ```
+
+
+> [!TIP]
+> 日常启动，使用` make up`：
+> make up 启动成功后访问：
+>- 前端：http://localhost:3000
+>- 后端 API：http://localhost:8000
+>- API 文档：http://localhost:8000/docs
+
+
+
 
 服务默认运行在 `http://localhost:8000`，API 文档：`http://localhost:8000/docs`
 
