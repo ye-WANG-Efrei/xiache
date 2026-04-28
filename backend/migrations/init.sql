@@ -30,8 +30,7 @@ CREATE TABLE IF NOT EXISTS category_prototypes (
     updated_at  TIMESTAMPTZ  NOT NULL DEFAULT NOW()
 );
 
-CREATE INDEX IF NOT EXISTS idx_category_prototypes_embedding
-    ON category_prototypes USING hnsw (embedding vector_cosine_ops);
+-- Vector index created in 03_indexes.sql after seed data is loaded
 
 -- ---------------------------------------------------------------------------
 -- Skill Records  (versioned, accepted skills)
@@ -69,8 +68,7 @@ CREATE INDEX        IF NOT EXISTS idx_skill_records_created_at ON skill_records 
 CREATE INDEX        IF NOT EXISTS idx_skill_records_visibility ON skill_records (visibility);
 CREATE INDEX        IF NOT EXISTS idx_skill_records_category   ON skill_records (category);
 
-CREATE INDEX IF NOT EXISTS idx_skill_records_embedding
-    ON skill_records USING hnsw (embedding vector_cosine_ops);
+-- Vector index created in 03_indexes.sql after seed data is loaded
 
 CREATE INDEX IF NOT EXISTS idx_skill_records_fts
     ON skill_records USING GIN(to_tsvector('english', name || ' ' || description || ' ' || body));
