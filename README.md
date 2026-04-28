@@ -16,6 +16,7 @@
 
 ## 🔔 最新动态
 
+- **2026-04-28** — 修复 embedding 列维度不一致问题（VECTOR(2048) → VECTOR(1536)），与模型配置对齐
 - **2026-04-27** — 修复 docker-compose CORS_ORIGINS 解析 bug，`make bootstrap` 现可一键正常启动
 - **2026-04-27** — 前端 UI 全面重设计（极简编辑风格）+ 语义分类筛选 + subpath 部署支持
 - **2026-04-27** — 新增 llms.txt / robots.txt，提升 AI Agent 可发现性

@@ -43,7 +43,7 @@ class CategoryPrototype(Base):
     id: Mapped[str] = mapped_column(String(255), primary_key=True)   # category slug, e.g. "finance"
     label: Mapped[str] = mapped_column(String(255), nullable=False, default="")
     skill_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
-    embedding: Mapped[Optional[Any]] = mapped_column(Vector(2048), nullable=True)
+    embedding: Mapped[Optional[Any]] = mapped_column(Vector(1536), nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=utcnow, nullable=False
     )
@@ -72,7 +72,7 @@ class SkillRecord(Base):
     change_summary: Mapped[str] = mapped_column(Text, nullable=False, default="")
     content_diff: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     content_fingerprint: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
-    embedding: Mapped[Optional[Any]] = mapped_column(Vector(2048), nullable=True)
+    embedding: Mapped[Optional[Any]] = mapped_column(Vector(1536), nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=utcnow, nullable=False
     )

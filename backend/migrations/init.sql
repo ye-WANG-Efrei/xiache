@@ -25,7 +25,7 @@ CREATE TABLE IF NOT EXISTS category_prototypes (
     id          VARCHAR(255) PRIMARY KEY,       -- category slug, e.g. "finance"
     label       VARCHAR(255) NOT NULL DEFAULT '',
     skill_count INTEGER      NOT NULL DEFAULT 0,
-    embedding   VECTOR(2048),
+    embedding   VECTOR(1536),
     created_at  TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
     updated_at  TIMESTAMPTZ  NOT NULL DEFAULT NOW()
 );
@@ -53,7 +53,7 @@ CREATE TABLE IF NOT EXISTS skill_records (
     change_summary       TEXT         NOT NULL DEFAULT '',
     content_diff         TEXT,
     content_fingerprint  CHAR(64)     NOT NULL,
-    embedding            VECTOR(2048),
+    embedding            VECTOR(1536),
     created_at           TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
     total_selections     INTEGER      NOT NULL DEFAULT 0,
     total_applied        INTEGER      NOT NULL DEFAULT 0,
