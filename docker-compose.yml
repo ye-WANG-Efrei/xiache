@@ -17,6 +17,7 @@ services:
     volumes:
       - postgres_data:/var/lib/postgresql/data
       - ./backend/migrations/init.sql:/docker-entrypoint-initdb.d/01_init.sql:ro
+      - ./backend/migrations/seed.sql:/docker-entrypoint-initdb.d/02_seed.sql:ro
     ports:
       - "${POSTGRES_PORT:-5432}:5432"
     healthcheck:
